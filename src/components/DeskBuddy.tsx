@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/store";
 import { computeStats, computeHealthTips } from "../lib/stats";
+import { computeRecap, type RecapSummary } from "../lib/insights";
+import { getLastRecapDate, saveLastRecapDate } from "../lib/vault";
 
 const IDLE_TIMEOUT_MS = 15000;
 const BOUNCE_MS = 700;
 const CELEBRATE_MS = 2200;
+const RECAP_MS = 5000;
+const AUTO_RECAP_DELAY_MS = 3000;
 const BUDDY_WIDTH = 40;
 const BUDDY_HEIGHT = 55;
 const CORNER_MARGIN = 16;
@@ -12,6 +16,28 @@ const STREAK_MILESTONES = [7, 30, 100, 365];
 const BLINK_MIN_MS = 2500;
 const BLINK_MAX_MS = 6000;
 const BLINK_DURATION_MS = 150;
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function recapLines(recap: RecapSummary): string[] {
+  const lines: string[] = [];
+  if (recap.notesThisWeek > 0) {
+    lines.push(`📊 This week: ${recap.notesThisWeek} note${recap.notesThisWeek === 1 ? "" : "s"} written`);
+  }
+  if (recap.currentStreak > 0) {
+    lines.push(`🔥 ${recap.currentStreak}-day streak`);
+  }
+  if (recap.topTag) {
+    lines.push(`🏷️ Top tag: #${recap.topTag}`);
+  }
+  if (recap.standoutNote) {
+    lines.push(`⭐ Most connected: "${recap.standoutNote.name}"`);
+  }
+  return lines;
+}
 
 type Expression = "idle" | "sleepy" | "happy" | "thinking" | "oops" | "celebrate";
 
@@ -23,19 +49,72 @@ export function DeskBuddy() {
   const setQuickSwitcherOpen = useAppStore((s) => s.setQuickSwitcherOpen);
   const tree = useAppStore((s) => s.tree);
   const scan = useAppStore((s) => s.scan);
+  const vaultPath = useAppStore((s) => s.vaultPath);
+  const recapRequestCount = useAppStore((s) => s.recapRequestCount);
 
   const [asleep, setAsleep] = useState(false);
   const [bounce, setBounce] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
   const [celebrateMsg, setCelebrateMsg] = useState("");
+  const [recapActive, setRecapActive] = useState(false);
+  const [recapMsgLines, setRecapMsgLines] = useState<string[]>([]);
   const [blinking, setBlinking] = useState(false);
   const idleTimerRef = useRef<number | null>(null);
   const bounceTimerRef = useRef<number | null>(null);
   const celebrateTimerRef = useRef<number | null>(null);
+  const recapTimerRef = useRef<number | null>(null);
   const blinkTimerRef = useRef<number | null>(null);
   const prevSavedAtRef = useRef<number | null>(lastSavedAt);
   const celebratedStreaksRef = useRef<Set<number>>(new Set());
+  const prevRecapRequestRef = useRef(recapRequestCount);
+  const autoRecapFiredRef = useRef(false);
+
+  const presentRecap = (recap: RecapSummary, allowEmpty: boolean) => {
+    const lines = recapLines(recap);
+    if (lines.length === 0) {
+      if (!allowEmpty) return;
+      lines.push("📝 Not much data yet — keep writing!");
+    }
+    setRecapMsgLines(lines);
+    setRecapActive(true);
+    if (recapTimerRef.current !== null) window.clearTimeout(recapTimerRef.current);
+    recapTimerRef.current = window.setTimeout(() => setRecapActive(false), RECAP_MS);
+  };
+
+  // Automatic recap, at most once per day, fired shortly after the vault's first scan completes.
+  useEffect(() => {
+    if (!vaultPath || !scan || autoRecapFiredRef.current) return;
+    autoRecapFiredRef.current = true;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const recap = computeRecap(tree, scan);
+        const worthShowing = recap.notesThisWeek > 0 || recap.currentStreak > 0 || recap.standoutNote !== null;
+        if (!worthShowing) return;
+        const today = todayISO();
+        const last = await getLastRecapDate();
+        if (last === today) return;
+        presentRecap(recap, false);
+        await saveLastRecapDate(today);
+      })();
+    }, AUTO_RECAP_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vaultPath, scan]);
+
+  // Manual recap, triggered from the insights panel's "Show recap" button.
+  useEffect(() => {
+    if (recapRequestCount === prevRecapRequestRef.current) return;
+    prevRecapRequestRef.current = recapRequestCount;
+    presentRecap(computeRecap(tree, scan), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recapRequestCount]);
+
+  useEffect(() => {
+    return () => {
+      if (recapTimerRef.current !== null) window.clearTimeout(recapTimerRef.current);
+    };
+  }, []);
 
   // Occasional idle blink, purely cosmetic, scheduled at a random cadence so it doesn't feel mechanical.
   useEffect(() => {
@@ -99,9 +178,11 @@ export function DeskBuddy() {
     };
   }, [stats.currentStreak]);
 
+  const celebrating = celebrate || recapActive;
+
   const expression: Expression = error
     ? "oops"
-    : celebrate
+    : celebrating
       ? "celebrate"
       : researching
         ? "thinking"
@@ -190,7 +271,14 @@ export function DeskBuddy() {
       </div>
       {expression === "sleepy" && <div className="buddy-zzz">z z z</div>}
       {expression === "thinking" && <div className="buddy-think-bubble">···</div>}
-      {expression === "celebrate" && <div className="buddy-celebrate-bubble">{celebrateMsg}</div>}
+      {celebrate && <div className="buddy-celebrate-bubble">{celebrateMsg}</div>}
+      {recapActive && (
+        <div className="buddy-recap-bubble">
+          {recapMsgLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

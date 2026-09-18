@@ -18,17 +18,20 @@ interface AppState {
   selectedTag: string | null;
   searchQuery: string;
   quickSwitcherOpen: boolean;
+  insightsPanelOpen: boolean;
   sidebarHidden: boolean;
   error: string | null;
   clearError: () => void;
   promptRequest: { message: string; defaultValue: string } | null;
   lastSavedAt: number | null;
   researchCount: number;
+  recapRequestCount: number;
 
   requestPrompt: (message: string, defaultValue?: string) => Promise<string | null>;
   resolvePrompt: (value: string | null) => void;
   beginResearch: () => void;
   endResearch: () => void;
+  requestRecap: () => void;
   initVault: () => Promise<void>;
   chooseVault: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -45,6 +48,7 @@ interface AppState {
   setSelectedTag: (tag: string | null) => void;
   setSearchQuery: (q: string) => void;
   setQuickSwitcherOpen: (open: boolean) => void;
+  setInsightsPanelOpen: (open: boolean) => void;
   toggleSidebar: () => void;
 }
 
@@ -58,15 +62,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedTag: null,
   searchQuery: "",
   quickSwitcherOpen: false,
+  insightsPanelOpen: false,
   sidebarHidden: false,
   error: null,
   clearError: () => set({ error: null }),
   promptRequest: null,
   lastSavedAt: null,
   researchCount: 0,
+  recapRequestCount: 0,
 
   beginResearch: () => set((s) => ({ researchCount: s.researchCount + 1 })),
   endResearch: () => set((s) => ({ researchCount: Math.max(0, s.researchCount - 1) })),
+  requestRecap: () => set((s) => ({ recapRequestCount: s.recapRequestCount + 1 })),
 
   requestPrompt: (message, defaultValue = "") =>
     new Promise<string | null>((resolve) => {
@@ -221,6 +228,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedTag: (tag) => set({ selectedTag: tag }),
   setSearchQuery: (q) => set({ searchQuery: q }),
   setQuickSwitcherOpen: (open) => set({ quickSwitcherOpen: open }),
+  setInsightsPanelOpen: (open) => set({ insightsPanelOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarHidden: !s.sidebarHidden })),
 }));
 

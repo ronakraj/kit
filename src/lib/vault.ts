@@ -17,6 +17,7 @@ export const DAILY_DIR = "Daily";
 export const ATTACHMENTS_DIR = "_attachments";
 const SETTINGS_FILE = "settings.json";
 const VAULT_PATH_KEY = "vaultPath";
+const LAST_RECAP_DATE_KEY = "lastRecapDate";
 
 let settingsStore: Store | null = null;
 
@@ -35,6 +36,17 @@ export async function getSavedVaultPath(): Promise<string | undefined> {
 export async function saveVaultPath(path: string): Promise<void> {
   const store = await getSettingsStore();
   await store.set(VAULT_PATH_KEY, path);
+  await store.save();
+}
+
+export async function getLastRecapDate(): Promise<string | undefined> {
+  const store = await getSettingsStore();
+  return store.get<string>(LAST_RECAP_DATE_KEY);
+}
+
+export async function saveLastRecapDate(dateISO: string): Promise<void> {
+  const store = await getSettingsStore();
+  await store.set(LAST_RECAP_DATE_KEY, dateISO);
   await store.save();
 }
 

@@ -7,6 +7,8 @@ import { QuickSwitcher } from "./components/QuickSwitcher";
 import { PromptDialog } from "./components/PromptDialog";
 import { DeskBuddy } from "./components/DeskBuddy";
 import { FocusToggle } from "./components/FocusToggle";
+import { InsightsPanel } from "./components/InsightsPanel";
+import { InsightsToggle } from "./components/InsightsToggle";
 
 function App() {
   const vaultPath = useAppStore((s) => s.vaultPath);
@@ -33,6 +35,8 @@ function App() {
       <QuickSwitcher />
       <PromptDialog />
       <DeskBuddy />
+      <InsightsPanel />
+      <InsightsToggle />
       <FocusToggle />
     </div>
   );
