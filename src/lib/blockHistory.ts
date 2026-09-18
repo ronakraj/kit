@@ -51,6 +51,16 @@ export function splitMarkedMarkdown(raw: string): MarkedChunk[] {
   return chunks;
 }
 
+/** Strips `<!--kb:ID-->` marker lines from saved markdown, for display purposes (e.g. a history-snapshot preview). */
+export function stripBlockMarkers(raw: string): string {
+  return raw
+    .split("\n")
+    .filter((line) => !BLOCK_MARKER_RE.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Cheap, non-cryptographic string fingerprint (djb2) used only to detect whether a block's content changed between saves. */
 function hashContent(s: string): string {
   let h = 5381;

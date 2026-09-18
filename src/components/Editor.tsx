@@ -141,6 +141,8 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const beginResearch = useAppStore((s) => s.beginResearch);
   const endResearch = useAppStore((s) => s.endResearch);
   const showBlockHistory = useAppStore((s) => s.showBlockHistory);
+  const restoreRequest = useAppStore((s) => s.restoreRequest);
+  const clearRestoreRequest = useAppStore((s) => s.clearRestoreRequest);
 
   const [titleDraft, setTitleDraft] = useState(currentNote?.title ?? "");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -207,6 +209,21 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
+
+  // Applies a history-panel "restore this version" request: reparse the
+  // snapshot's markdown (reattaching stable block ids the same way a normal
+  // note load does) and swap it in as the live document, then flush so the
+  // restore itself is persisted as a new history entry rather than erasing
+  // what came before it.
+  useEffect(() => {
+    if (!restoreRequest || restoreRequest.path !== path) return;
+    const newBlocks = parseMarkdownToBlocks(restoreRequest.markdown);
+    editor.replaceBlocks(editor.document, newBlocks);
+    clearRestoreRequest();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- flush() persists the just-applied restore immediately rather than waiting for the debounce, so it isn't lost if the user navigates away right after restoring.
+    flush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreRequest, path]);
 
   // Maps a "Go deeper" trigger block's id to what it should research.
   // Scoped to this BoundEditor instance (remounted per note, since it's

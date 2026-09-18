@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   encodeBlockMarker,
   splitMarkedMarkdown,
+  stripBlockMarkers,
   diffBlocks,
   appendSnapshot,
   emptyHistory,
@@ -51,6 +52,22 @@ describe("encodeBlockMarker / splitMarkedMarkdown", () => {
       { id: "a", chunk: "" },
       { id: "b", chunk: "Content" },
     ]);
+  });
+});
+
+describe("stripBlockMarkers", () => {
+  it("removes marker lines and collapses the resulting extra blank lines", () => {
+    const md = [`${encodeBlockMarker("a")}`, "First", "", `${encodeBlockMarker("b")}`, "Second"].join("\n");
+    expect(stripBlockMarkers(md)).toBe("First\n\nSecond");
+  });
+
+  it("leaves markerless markdown untouched (aside from trimming)", () => {
+    expect(stripBlockMarkers("# Title\n\nJust plain markdown.")).toBe("# Title\n\nJust plain markdown.");
+  });
+
+  it("returns an empty string for markdown that is only markers", () => {
+    const md = [`${encodeBlockMarker("a")}`, `${encodeBlockMarker("b")}`].join("\n");
+    expect(stripBlockMarkers(md)).toBe("");
   });
 });
 

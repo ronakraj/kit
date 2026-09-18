@@ -19,8 +19,10 @@ interface AppState {
   searchQuery: string;
   quickSwitcherOpen: boolean;
   insightsPanelOpen: boolean;
+  noteHistoryPanelOpen: boolean;
   sidebarHidden: boolean;
   showBlockHistory: boolean;
+  restoreRequest: { path: string; markdown: string } | null;
   error: string | null;
   clearError: () => void;
   promptRequest: { message: string; defaultValue: string } | null;
@@ -50,8 +52,11 @@ interface AppState {
   setSearchQuery: (q: string) => void;
   setQuickSwitcherOpen: (open: boolean) => void;
   setInsightsPanelOpen: (open: boolean) => void;
+  setNoteHistoryPanelOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   toggleBlockHistory: () => void;
+  requestRestore: (path: string, markdown: string) => void;
+  clearRestoreRequest: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -65,8 +70,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   quickSwitcherOpen: false,
   insightsPanelOpen: false,
+  noteHistoryPanelOpen: false,
   sidebarHidden: false,
   showBlockHistory: false,
+  restoreRequest: null,
   error: null,
   clearError: () => set({ error: null }),
   promptRequest: null,
@@ -232,8 +239,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   setQuickSwitcherOpen: (open) => set({ quickSwitcherOpen: open }),
   setInsightsPanelOpen: (open) => set({ insightsPanelOpen: open }),
+  setNoteHistoryPanelOpen: (open) => set({ noteHistoryPanelOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarHidden: !s.sidebarHidden })),
   toggleBlockHistory: () => set((s) => ({ showBlockHistory: !s.showBlockHistory })),
+  requestRestore: (path, markdown) => set({ restoreRequest: { path, markdown } }),
+  clearRestoreRequest: () => set({ restoreRequest: null }),
 }));
 
 export function useBacklinksForCurrentNote() {

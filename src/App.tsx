@@ -10,6 +10,8 @@ import { FocusToggle } from "./components/FocusToggle";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { InsightsToggle } from "./components/InsightsToggle";
 import { BlockHistoryToggle } from "./components/BlockHistoryToggle";
+import { NoteHistoryPanel } from "./components/NoteHistoryPanel";
+import { NoteHistoryToggle } from "./components/NoteHistoryToggle";
 
 function App() {
   const vaultPath = useAppStore((s) => s.vaultPath);
@@ -39,6 +41,8 @@ function App() {
       <InsightsPanel />
       <InsightsToggle />
       <BlockHistoryToggle />
+      <NoteHistoryPanel />
+      <NoteHistoryToggle />
       <FocusToggle />
     </div>
   );
