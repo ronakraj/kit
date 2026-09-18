@@ -40,6 +40,38 @@ body {
   color: var(--text);
 }
 
+/* KaTeX ships with hardcoded text colors; inherit the app's theme instead. */
+.katex {
+  color: var(--text);
+}
+
+.math-block {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.math-block-input,
+.math-block-range-input {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+}
+
+.math-block-input {
+  width: 100%;
+}
+
+.math-block-range-input {
+  width: 56px;
+}
+
 @keyframes buddy-tail-wag {
   0%,
   100% {

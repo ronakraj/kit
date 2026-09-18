@@ -5,13 +5,17 @@ import {
   FormattingToolbar,
   FormattingToolbarController,
   getFormattingToolbarItems,
+  getDefaultReactSlashMenuItems,
+  SuggestionMenuController,
 } from "@blocknote/react";
 import { BlockNoteView, lightDefaultTheme, darkDefaultTheme } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
-import { BlockNoteEditor, type PartialBlock } from "@blocknote/core";
+import { BlockNoteEditor, filterSuggestionItems } from "@blocknote/core";
 import { useAppStore } from "../state/store";
 import { createUploadFileHandler } from "../lib/attachments";
 import { researchTerm } from "../lib/ai";
+import { toPersistableBlocks, fromPersistedBlocks, type AnyBlock } from "../lib/mathBlocks";
+import { mathSchema, getMathSlashMenuItems, type MathPartialBlock } from "./mathBlocks";
 import { TagChips } from "./TagChips";
 import { BacklinksPanel } from "./BacklinksPanel";
 
@@ -19,10 +23,17 @@ const SAVE_DEBOUNCE_MS = 600;
 const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
 const GO_DEEPER_TEXT = "🔍 Go deeper";
 
-function parseMarkdownToBlocks(markdown: string): PartialBlock[] {
-  const parser = BlockNoteEditor.create();
+function parseMarkdownToBlocks(markdown: string): MathPartialBlock[] {
+  const parser = BlockNoteEditor.create({ schema: mathSchema });
   const blocks = parser.tryParseMarkdownToBlocks(markdown);
-  return blocks.length > 0 ? blocks : [{ type: "paragraph" }];
+  const withMath = fromPersistedBlocks(blocks as unknown as AnyBlock[]) as unknown as MathPartialBlock[];
+  return withMath.length > 0 ? withMath : [{ type: "paragraph" }];
+}
+
+/** Converts custom equation/plot blocks back to plain code blocks before serializing to markdown, so notes stay portable plain-text files. */
+function toMarkdown(editor: { document: unknown; blocksToMarkdownLossy: (blocks?: MathPartialBlock[]) => string }): string {
+  const persistable = toPersistableBlocks(editor.document as unknown as AnyBlock[]) as unknown as MathPartialBlock[];
+  return editor.blocksToMarkdownLossy(persistable);
 }
 
 /** Provides the "research selected term" trigger down to the custom formatting toolbar button. */
@@ -75,7 +86,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const initialBlocks = useMemo(() => parseMarkdownToBlocks(initialBody), [path]);
   const uploadFile = useMemo(() => createUploadFileHandler(vaultPath), [vaultPath]);
 
-  const editor = useCreateBlockNote({ initialContent: initialBlocks, uploadFile });
+  const editor = useCreateBlockNote({ schema: mathSchema, initialContent: initialBlocks, uploadFile });
 
   const timerRef = useRef<number | null>(null);
   const flush = () => {
@@ -84,7 +95,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
       timerRef.current = null;
     }
     setSaveStatus("saving");
-    const markdown = editor.blocksToMarkdownLossy();
+    const markdown = toMarkdown(editor);
     void persistNoteBody(path, markdown).then(() => setSaveStatus("saved"));
   };
 
@@ -152,7 +163,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     try {
       const markdown = await researchTerm(term, context, "concise");
       const explanationBlocks = parseMarkdownToBlocks(markdown);
-      const goDeeperBlock: PartialBlock = {
+      const goDeeperBlock: MathPartialBlock = {
         type: "paragraph",
         content: [{ type: "text", text: GO_DEEPER_TEXT, styles: { bold: true, underline: true, textColor: "blue" } }],
       };
@@ -245,8 +256,15 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
               editor={editor}
               theme={{ light: lightDefaultTheme, dark: darkDefaultTheme }}
               formattingToolbar={false}
+              slashMenu={false}
             >
               <FormattingToolbarController formattingToolbar={CustomFormattingToolbar} />
+              <SuggestionMenuController
+                triggerCharacter="/"
+                getItems={async (query) =>
+                  filterSuggestionItems(getMathSlashMenuItems(editor, getDefaultReactSlashMenuItems(editor)), query)
+                }
+              />
             </BlockNoteView>
           </ResearchTriggerContext.Provider>
         </div>
