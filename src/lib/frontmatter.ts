@@ -11,7 +11,7 @@ export function parseNoteFile(raw: string): { meta: NoteMeta; body: string } {
   }
 
   const [, frontmatter, body] = match;
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed = (YAML.parse(frontmatter) as Record<string, unknown>) ?? {};
   } catch {

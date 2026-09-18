@@ -7,6 +7,10 @@ export function PromptDialog() {
   const [value, setValue] = useState("");
 
   useEffect(() => {
+    // Resets the draft whenever a new prompt request comes in; the dialog is
+    // shown/hidden by the same `request` prop, so there's no key-based remount
+    // point to hang this off of instead.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (request) setValue(request.defaultValue);
   }, [request]);
 

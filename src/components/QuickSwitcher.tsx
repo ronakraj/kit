@@ -26,7 +26,9 @@ export function QuickSwitcher() {
   }, [open, setOpen]);
 
   useEffect(() => {
+    // Resets the search field each time the switcher is opened.
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuery("");
       setActiveIndex(0);
     }
