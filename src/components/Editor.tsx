@@ -10,12 +10,18 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView, lightDefaultTheme, darkDefaultTheme } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
-import { BlockNoteEditor, filterSuggestionItems } from "@blocknote/core";
+import { filterSuggestionItems } from "@blocknote/core";
 import { useAppStore } from "../state/store";
 import { createUploadFileHandler } from "../lib/attachments";
 import { researchTerm } from "../lib/ai";
 import { toPersistableBlocks, fromPersistedBlocks, type AnyBlock } from "../lib/mathBlocks";
-import { mathSchema, getMathSlashMenuItems, type MathPartialBlock } from "./mathBlocks";
+import { getMathSlashMenuItems, type MathEditor } from "./mathBlocks";
+import { editorSchema, createHeadlessEditor, type EditorPartialBlock } from "./floatingBlocks";
+import {
+  toPersistableFloatingBlocks,
+  fromPersistedFloatingBlocks,
+  DEFAULT_FLOATING_WIDTH,
+} from "../lib/floatingBlocks";
 import {
   encodeBlockMarker,
   splitMarkedMarkdown,
@@ -43,16 +49,25 @@ const GO_DEEPER_TEXT = "🔍 Go deeper";
  * marker (legacy notes, or ones edited outside the app) still parses fine,
  * it just starts fresh history from its next save.
  */
-function parseMarkdownToBlocks(markdown: string): MathPartialBlock[] {
-  const parser = BlockNoteEditor.create({ schema: mathSchema });
+function parseMarkdownToBlocks(markdown: string): EditorPartialBlock[] {
+  const parser = createHeadlessEditor();
   const chunks = splitMarkedMarkdown(markdown);
-  const allBlocks: MathPartialBlock[] = [];
+  const allBlocks: EditorPartialBlock[] = [];
+
+  // Reconstructs a floating block's rich inline content from its persisted
+  // markdown text — parsed via the same headless editor instance, treating
+  // the text as a throwaway paragraph and taking its content.
+  const parseInline = (bodyMarkdown: string): unknown => {
+    const blocks = parser.tryParseMarkdownToBlocks(bodyMarkdown || " ") as unknown as AnyBlock[];
+    return blocks[0]?.content ?? [];
+  };
 
   for (const { id, chunk } of chunks) {
     const parsedChunkBlocks = parser.tryParseMarkdownToBlocks(chunk) as unknown as AnyBlock[];
-    const withMath = fromPersistedBlocks(parsedChunkBlocks) as unknown as MathPartialBlock[];
+    const withMath = fromPersistedBlocks(parsedChunkBlocks) as unknown as AnyBlock[];
+    const withFloating = fromPersistedFloatingBlocks(withMath, parseInline) as unknown as EditorPartialBlock[];
 
-    if (withMath.length === 0) {
+    if (withFloating.length === 0) {
       if (id) allBlocks.push({ type: "paragraph", id });
       continue;
     }
@@ -60,10 +75,10 @@ function parseMarkdownToBlocks(markdown: string): MathPartialBlock[] {
       // A chunk parsing into multiple blocks is rare (top-level chunking is
       // usually 1:1), but if it happens, the stable id goes to the first
       // resulting block; the rest just start fresh history.
-      const [first, ...rest] = withMath;
+      const [first, ...rest] = withFloating;
       allBlocks.push({ ...first, id }, ...rest);
     } else {
-      allBlocks.push(...withMath);
+      allBlocks.push(...withFloating);
     }
   }
 
@@ -80,15 +95,24 @@ function parseMarkdownToBlocks(markdown: string): MathPartialBlock[] {
  */
 function buildMarkdownWithHistory(editor: {
   document: unknown;
-  blocksToMarkdownLossy: (blocks?: MathPartialBlock[]) => string;
+  blocksToMarkdownLossy: (blocks?: EditorPartialBlock[]) => string;
 }): { markdown: string; entries: { id: string; content: string }[] } {
-  const topBlocks = editor.document as MathPartialBlock[];
+  const topBlocks = editor.document as EditorPartialBlock[];
   const entries: { id: string; content: string }[] = [];
   const chunks: string[] = [];
 
+  // Serializes a floating block's rich inline content to markdown text by
+  // treating it as a throwaway paragraph (same inline-content shape) and
+  // running it through the real editor's own markdown serializer.
+  const serializeInline = (block: AnyBlock): string => {
+    const asParagraph = { id: block.id, type: "paragraph", content: block.content } as unknown as EditorPartialBlock;
+    return editor.blocksToMarkdownLossy([asParagraph]).trim();
+  };
+
   for (const block of topBlocks) {
     if (!block.id) continue;
-    const [persistable] = toPersistableBlocks([block as unknown as AnyBlock]) as unknown as MathPartialBlock[];
+    const mathTransformed = toPersistableBlocks([block as unknown as AnyBlock]) as unknown as AnyBlock[];
+    const [persistable] = toPersistableFloatingBlocks(mathTransformed, serializeInline) as unknown as EditorPartialBlock[];
     const content = editor.blocksToMarkdownLossy([persistable]).trim();
     entries.push({ id: block.id, content });
     chunks.push(`${encodeBlockMarker(block.id)}\n${content}`);
@@ -148,11 +172,17 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const [titleDraft, setTitleDraft] = useState(currentNote?.title ?? "");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [gutterEntries, setGutterEntries] = useState<{ id: string; top: number; short: string; full: string }[]>([]);
+  // Single-shot placement mode: turn it on, click empty space in the note to
+  // drop a floating text block there, mode turns itself back off. Not a
+  // persistent "everything you click creates a block" mode — that would make
+  // normal editing painful.
+  const [floatingModeActive, setFloatingModeActive] = useState(false);
+  const [minContentHeight, setMinContentHeight] = useState(0);
   const gutterWrapRef = useRef<HTMLDivElement | null>(null);
   const initialBlocks = useMemo(() => parseMarkdownToBlocks(initialBody), [path]);
   const uploadFile = useMemo(() => createUploadFileHandler(vaultPath), [vaultPath]);
 
-  const editor = useCreateBlockNote({ schema: mathSchema, initialContent: initialBlocks, uploadFile });
+  const editor = useCreateBlockNote({ schema: editorSchema, initialContent: initialBlocks, uploadFile });
 
   // Block-level edit history (git-blame-ish): loaded once per note, updated
   // in-memory on every save, and written to a JSON sidecar under
@@ -192,6 +222,25 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     setGutterEntries(entries);
   };
 
+  // Floating blocks are `position: absolute` and don't contribute to the
+  // content container's natural (flow-driven) height, so without this, a
+  // floating block placed below the last flowing block could get clipped or
+  // become unreachable to click on. Recomputed whenever the document changes.
+  const recomputeMinHeight = () => {
+    const floatingBlocks = (editor.document as EditorPartialBlock[]).filter((b) => b.type === "floatingText");
+    if (floatingBlocks.length === 0) {
+      setMinContentHeight(0);
+      return;
+    }
+    const maxBottom = Math.max(
+      ...floatingBlocks.map((b) => {
+        const props = b.props as { y?: number } | undefined;
+        return (typeof props?.y === "number" ? props.y : 0) + 200;
+      })
+    );
+    setMinContentHeight(maxBottom + 200);
+  };
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -200,6 +249,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
         historyRef.current = history;
         authorIdRef.current = authorId;
         requestAnimationFrame(recomputeGutter);
+        recomputeMinHeight();
       }
     })();
     return () => {
@@ -216,6 +266,16 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     return () => window.removeEventListener("resize", recomputeGutter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showBlockHistory]);
+
+  // Escape cancels floating-placement mode without placing anything.
+  useEffect(() => {
+    if (!floatingModeActive) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFloatingModeActive(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [floatingModeActive]);
 
   const timerRef = useRef<number | null>(null);
   const flush = () => {
@@ -246,6 +306,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
       // independent of the debounced autosave — keep the gutter positions
       // in step with that, even though the metadata itself only updates on save.
       requestAnimationFrame(recomputeGutter);
+      recomputeMinHeight();
     });
     // Flush immediately if the app is closing/reloading so nothing typed in
     // the last debounce window gets lost.
@@ -321,7 +382,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     try {
       const markdown = await researchTerm(term, context, "concise");
       const explanationBlocks = parseMarkdownToBlocks(markdown);
-      const goDeeperBlock: MathPartialBlock = {
+      const goDeeperBlock: EditorPartialBlock = {
         type: "paragraph",
         content: [{ type: "text", text: GO_DEEPER_TEXT, styles: { bold: true, underline: true, textColor: "blue" } }],
       };
@@ -369,6 +430,30 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   };
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (floatingModeActive) {
+      const onExistingBlock = !!(e.target as HTMLElement).closest?.("[data-id]");
+      if (!onExistingBlock && gutterWrapRef.current) {
+        // `getBoundingClientRect()` already accounts for any ancestor
+        // scrolling, same reasoning `recomputeGutter` above already relies
+        // on — no separate scrollTop/scrollLeft math needed.
+        const rect = gutterWrapRef.current.getBoundingClientRect();
+        const x = Math.max(0, e.clientX - rect.left);
+        const y = Math.max(0, e.clientY - rect.top);
+        const doc = editor.document as EditorPartialBlock[];
+        const lastBlock = doc[doc.length - 1];
+        const newBlock: EditorPartialBlock = {
+          type: "floatingText",
+          props: { x, y, width: DEFAULT_FLOATING_WIDTH },
+        };
+        if (lastBlock?.id) editor.insertBlocks([newBlock], lastBlock.id, "after");
+        setFloatingModeActive(false);
+        return;
+      }
+      // Clicked on existing content while in placement mode — fall through
+      // to normal handling (edit that block) rather than placing anything;
+      // the mode stays active until a blank-space click succeeds.
+    }
+
     const blockEl = (e.target as HTMLElement).closest?.("[data-id]") as HTMLElement | null;
     const blockId = blockEl?.getAttribute("data-id");
     if (blockId && goDeeperRegistry.has(blockId)) {
@@ -422,6 +507,14 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
               </span>
             )}
             <button
+              onClick={() => setFloatingModeActive((v) => !v)}
+              title={floatingModeActive ? "Click empty space in the note to place it (Esc/click again to cancel)" : "Add a free-floating text block"}
+              className="text-xs"
+              style={{ color: floatingModeActive ? "var(--accent)" : "var(--text-muted)" }}
+            >
+              {floatingModeActive ? "✚ Click to place…" : "✚ Floating text"}
+            </button>
+            <button
               onClick={() => {
                 if (window.confirm(`Delete "${currentNote?.title}"?`)) void deleteNote(path);
               }}
@@ -437,7 +530,13 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
           <TagChips />
         </div>
 
-        <div ref={gutterWrapRef} className="relative" onClick={handleContainerClick} onPaste={handlePaste}>
+        <div
+          ref={gutterWrapRef}
+          className="relative"
+          style={{ minHeight: minContentHeight > 0 ? minContentHeight : "60vh", cursor: floatingModeActive ? "crosshair" : undefined }}
+          onClick={handleContainerClick}
+          onPaste={handlePaste}
+        >
           {gutterEntries.map((g) => (
             <div
               key={g.id}
@@ -459,7 +558,12 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
               <SuggestionMenuController
                 triggerCharacter="/"
                 getItems={async (query) =>
-                  filterSuggestionItems(getMathSlashMenuItems(editor, getDefaultReactSlashMenuItems(editor)), query)
+                  filterSuggestionItems(
+                    // `editorSchema` is a superset of the math-only schema `getMathSlashMenuItems` was
+                    // typed against; the cast is safe since it only reads/calls the shared block specs.
+                    getMathSlashMenuItems(editor as unknown as MathEditor, getDefaultReactSlashMenuItems(editor)),
+                    query
+                  )
                 }
               />
             </BlockNoteView>

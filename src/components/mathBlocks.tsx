@@ -177,12 +177,15 @@ const plotBlockBuilder = createReactBlockSpec(plotBlockConfig, {
   render: PlotBlockContent,
 });
 
+/** Exposed (alongside the already-created `mathSchema`) so other modules can compose a combined schema that includes these block specs plus their own. */
+export const mathBlockSpecs = {
+  ...defaultBlockSpecs,
+  equation: equationBlockBuilder(),
+  plot: plotBlockBuilder(),
+};
+
 export const mathSchema = BlockNoteSchema.create({
-  blockSpecs: {
-    ...defaultBlockSpecs,
-    equation: equationBlockBuilder(),
-    plot: plotBlockBuilder(),
-  },
+  blockSpecs: mathBlockSpecs,
 });
 
 export type MathEditor = BlockNoteEditor<typeof mathSchema.blockSchema, typeof mathSchema.inlineContentSchema, typeof mathSchema.styleSchema>;
