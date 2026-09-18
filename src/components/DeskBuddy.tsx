@@ -5,7 +5,6 @@ import { computeRecap, type RecapSummary } from "../lib/insights";
 import { getLastRecapDate, saveLastRecapDate } from "../lib/vault";
 import { getCurrentActivity, type Activity, type Pose } from "../lib/timeOfDay";
 
-const IDLE_TIMEOUT_MS = 15000;
 const BOUNCE_MS = 700;
 const CELEBRATE_MS = 2200;
 const RECAP_MS = 5000;
@@ -26,7 +25,7 @@ const QUIRK_DURATION_MS: Record<Quirk, number> = { stretch: 800, look: 1000, hop
 
 const ACTIVITY_MIN_MS = 90000;
 const ACTIVITY_MAX_MS = 180000;
-const ACTIVITY_BUBBLE_MS = 4500;
+const ACTIVITY_BUBBLE_MS = 9000;
 /** Poses shown as a small side prop icon rather than a body-silhouette change (yoga/sleeping get the latter instead). */
 const PROP_POSES: Pose[] = ["coffee", "lunch", "working", "friends", "cooking", "reading"];
 
@@ -52,7 +51,7 @@ function recapLines(recap: RecapSummary): string[] {
   return lines;
 }
 
-type Expression = "idle" | "sleepy" | "happy" | "thinking" | "oops" | "celebrate";
+type Expression = "idle" | "happy" | "thinking" | "oops" | "celebrate";
 
 export function DeskBuddy() {
   const lastSavedAt = useAppStore((s) => s.lastSavedAt);
@@ -65,7 +64,6 @@ export function DeskBuddy() {
   const vaultPath = useAppStore((s) => s.vaultPath);
   const recapRequestCount = useAppStore((s) => s.recapRequestCount);
 
-  const [asleep, setAsleep] = useState(false);
   const [bounce, setBounce] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
@@ -75,7 +73,6 @@ export function DeskBuddy() {
   const [blinking, setBlinking] = useState(false);
   const [quirk, setQuirk] = useState<Quirk | null>(null);
   const [activity, setActivity] = useState<Activity | null>(null);
-  const idleTimerRef = useRef<number | null>(null);
   const bounceTimerRef = useRef<number | null>(null);
   const celebrateTimerRef = useRef<number | null>(null);
   const recapTimerRef = useRef<number | null>(null);
@@ -155,7 +152,7 @@ export function DeskBuddy() {
   // played at a random cadence to break up the constant float/tail-wag.
   // Scheduling runs unconditionally; rendering only applies it while idle
   // (see `animClass`/`earTwitch` below), so it just quietly skips a beat
-  // if the buddy happens to be asleep or reacting to something else.
+  // if the buddy happens to be reacting to something else at that moment.
   useEffect(() => {
     const scheduleQuirk = () => {
       const delay = QUIRK_MIN_MS + Math.random() * (QUIRK_MAX_MS - QUIRK_MIN_MS);
@@ -190,23 +187,6 @@ export function DeskBuddy() {
     return () => {
       if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
       if (activityEndTimerRef.current !== null) window.clearTimeout(activityEndTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const resetIdle = () => {
-      setAsleep(false);
-      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = window.setTimeout(() => setAsleep(true), IDLE_TIMEOUT_MS);
-    };
-
-    window.addEventListener("keydown", resetIdle);
-    window.addEventListener("mousedown", resetIdle);
-    resetIdle();
-    return () => {
-      window.removeEventListener("keydown", resetIdle);
-      window.removeEventListener("mousedown", resetIdle);
-      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current);
     };
   }, []);
 
@@ -249,9 +229,7 @@ export function DeskBuddy() {
         ? "thinking"
         : bounce
           ? "happy"
-          : asleep
-            ? "sleepy"
-            : "idle";
+          : "idle";
 
   const handleClick = () => {
     if (error) {
@@ -349,7 +327,6 @@ export function DeskBuddy() {
           <PoseProp pose={idleActivity.pose} />
         </div>
       )}
-      {expression === "sleepy" && <div className="buddy-zzz">z z z</div>}
       {expression === "thinking" && <div className="buddy-think-bubble">···</div>}
       {celebrate && <div className="buddy-celebrate-bubble">{celebrateMsg}</div>}
       {idleActivity && <div className="buddy-activity-bubble">{idleActivity.label}</div>}
@@ -470,12 +447,7 @@ function BuddySprite({
       )}
 
       {/* eyes */}
-      {expression === "sleepy" ? (
-        <>
-          <rect x="4" y="5" width="2" height="1" fill={ink} />
-          <rect x="10" y="5" width="2" height="1" fill={ink} />
-        </>
-      ) : expression === "happy" || expression === "celebrate" ? (
+      {expression === "happy" || expression === "celebrate" ? (
         <>
           <rect x="4" y="5" width="2" height="1" fill={ink} />
           <rect x="4" y="6" width="1" height="1" fill={ink} />
@@ -514,8 +486,6 @@ function BuddySprite({
           <rect x="7" y="11" width="2" height="1" fill={ink} />
           <rect x="9" y="10" width="1" height="1" fill={ink} />
         </>
-      ) : expression === "sleepy" ? (
-        <rect x="7" y="10" width="2" height="1" fill={ink} />
       ) : expression === "thinking" ? (
         <rect x="8" y="10" width="1" height="1" fill={ink} />
       ) : expression === "oops" ? (

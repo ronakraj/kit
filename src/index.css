@@ -86,6 +86,31 @@ body {
   width: 56px;
 }
 
+.floating-text-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 6px 10px 8px;
+}
+
+.floating-text-handle {
+  cursor: grab;
+  font-size: 12px;
+  line-height: 1;
+  margin-bottom: 4px;
+  user-select: none;
+  touch-action: none;
+}
+
+.floating-text-handle:active {
+  cursor: grabbing;
+}
+
+.floating-text-content {
+  font-size: 14px;
+  min-height: 1.4em;
+}
+
 @keyframes buddy-tail-wag {
   0%,
   100% {
@@ -208,31 +233,6 @@ body {
 
 .buddy-bounce {
   animation: buddy-bounce 0.7s ease-in-out;
-}
-
-@keyframes buddy-zzz-float {
-  0% {
-    opacity: 0;
-    transform: translateY(0);
-  }
-  30% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-14px);
-  }
-}
-
-.buddy-zzz {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  animation: buddy-zzz-float 2.2s ease-in-out infinite;
 }
 
 @keyframes buddy-think-wobble {
@@ -381,7 +381,7 @@ body {
   font-size: 11px;
   font-weight: 500;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  animation: buddy-celebrate-bubble-pop 4.5s ease-in-out;
+  animation: buddy-celebrate-bubble-pop 9s ease-in-out;
 }
 
 .buddy-stats-popup {
