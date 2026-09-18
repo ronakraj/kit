@@ -3,6 +3,7 @@ import { useAppStore } from "../state/store";
 import { computeStats, computeHealthTips } from "../lib/stats";
 import { computeRecap, type RecapSummary } from "../lib/insights";
 import { getLastRecapDate, saveLastRecapDate } from "../lib/vault";
+import { getCurrentActivity, type Activity, type Pose } from "../lib/timeOfDay";
 
 const IDLE_TIMEOUT_MS = 15000;
 const BOUNCE_MS = 700;
@@ -16,6 +17,18 @@ const STREAK_MILESTONES = [7, 30, 100, 365];
 const BLINK_MIN_MS = 2500;
 const BLINK_MAX_MS = 6000;
 const BLINK_DURATION_MS = 150;
+
+type Quirk = "stretch" | "look" | "hop" | "ear-twitch";
+const QUIRKS: Quirk[] = ["stretch", "look", "hop", "ear-twitch"];
+const QUIRK_MIN_MS = 8000;
+const QUIRK_MAX_MS = 18000;
+const QUIRK_DURATION_MS: Record<Quirk, number> = { stretch: 800, look: 1000, hop: 600, "ear-twitch": 500 };
+
+const ACTIVITY_MIN_MS = 90000;
+const ACTIVITY_MAX_MS = 180000;
+const ACTIVITY_BUBBLE_MS = 4500;
+/** Poses shown as a small side prop icon rather than a body-silhouette change (yoga/sleeping get the latter instead). */
+const PROP_POSES: Pose[] = ["coffee", "lunch", "working", "friends", "cooking", "reading"];
 
 function todayISO(): string {
   const d = new Date();
@@ -60,11 +73,17 @@ export function DeskBuddy() {
   const [recapActive, setRecapActive] = useState(false);
   const [recapMsgLines, setRecapMsgLines] = useState<string[]>([]);
   const [blinking, setBlinking] = useState(false);
+  const [quirk, setQuirk] = useState<Quirk | null>(null);
+  const [activity, setActivity] = useState<Activity | null>(null);
   const idleTimerRef = useRef<number | null>(null);
   const bounceTimerRef = useRef<number | null>(null);
   const celebrateTimerRef = useRef<number | null>(null);
   const recapTimerRef = useRef<number | null>(null);
   const blinkTimerRef = useRef<number | null>(null);
+  const quirkTimerRef = useRef<number | null>(null);
+  const quirkEndTimerRef = useRef<number | null>(null);
+  const activityTimerRef = useRef<number | null>(null);
+  const activityEndTimerRef = useRef<number | null>(null);
   const prevSavedAtRef = useRef<number | null>(lastSavedAt);
   const celebratedStreaksRef = useRef<Set<number>>(new Set());
   const prevRecapRequestRef = useRef(recapRequestCount);
@@ -129,6 +148,48 @@ export function DeskBuddy() {
     scheduleBlink();
     return () => {
       if (blinkTimerRef.current !== null) window.clearTimeout(blinkTimerRef.current);
+    };
+  }, []);
+
+  // Occasional idle "quirk" — a stretch, look-around, hop, or ear twitch —
+  // played at a random cadence to break up the constant float/tail-wag.
+  // Scheduling runs unconditionally; rendering only applies it while idle
+  // (see `animClass`/`earTwitch` below), so it just quietly skips a beat
+  // if the buddy happens to be asleep or reacting to something else.
+  useEffect(() => {
+    const scheduleQuirk = () => {
+      const delay = QUIRK_MIN_MS + Math.random() * (QUIRK_MAX_MS - QUIRK_MIN_MS);
+      quirkTimerRef.current = window.setTimeout(() => {
+        const pick = QUIRKS[Math.floor(Math.random() * QUIRKS.length)];
+        setQuirk(pick);
+        quirkEndTimerRef.current = window.setTimeout(() => setQuirk(null), QUIRK_DURATION_MS[pick]);
+        scheduleQuirk();
+      }, delay);
+    };
+    scheduleQuirk();
+    return () => {
+      if (quirkTimerRef.current !== null) window.clearTimeout(quirkTimerRef.current);
+      if (quirkEndTimerRef.current !== null) window.clearTimeout(quirkEndTimerRef.current);
+    };
+  }, []);
+
+  // Occasional "what Kit's up to" — a pose/prop matching the real-world time
+  // of day, shown briefly on a random cadence. Scheduling runs unconditionally;
+  // rendering only applies it while idle (see `idleActivity` below), same
+  // gating approach as the quirk system just above.
+  useEffect(() => {
+    const scheduleActivity = () => {
+      const delay = ACTIVITY_MIN_MS + Math.random() * (ACTIVITY_MAX_MS - ACTIVITY_MIN_MS);
+      activityTimerRef.current = window.setTimeout(() => {
+        setActivity(getCurrentActivity());
+        activityEndTimerRef.current = window.setTimeout(() => setActivity(null), ACTIVITY_BUBBLE_MS);
+        scheduleActivity();
+      }, delay);
+    };
+    scheduleActivity();
+    return () => {
+      if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current);
+      if (activityEndTimerRef.current !== null) window.clearTimeout(activityEndTimerRef.current);
     };
   }, []);
 
@@ -200,6 +261,9 @@ export function DeskBuddy() {
     setQuickSwitcherOpen(true);
   };
 
+  const idleQuirk = expression === "idle" ? quirk : null;
+  const idleActivity: Activity | null = expression === "idle" ? activity : null;
+
   const animClass =
     expression === "thinking"
       ? "buddy-think"
@@ -209,7 +273,13 @@ export function DeskBuddy() {
           ? "buddy-oops"
           : bounce
             ? "buddy-bounce"
-            : "buddy-float";
+            : idleQuirk === "stretch"
+              ? "buddy-stretch"
+              : idleQuirk === "look"
+                ? "buddy-look"
+                : idleQuirk === "hop"
+                  ? "buddy-hop"
+                  : "buddy-float";
 
   const showPopup = error ? true : hovered;
 
@@ -267,11 +337,22 @@ export function DeskBuddy() {
         onMouseLeave={() => setHovered(false)}
         title="Click to jump to a note (Ctrl/Cmd+K)"
       >
-        <BuddySprite expression={expression} blinking={blinking && expression === "idle"} />
+        <BuddySprite
+          expression={expression}
+          blinking={blinking && expression === "idle"}
+          earTwitch={idleQuirk === "ear-twitch"}
+          pose={idleActivity?.pose ?? null}
+        />
       </div>
+      {idleActivity && PROP_POSES.includes(idleActivity.pose) && (
+        <div style={{ position: "absolute", left: -22, bottom: 16, pointerEvents: "none" }}>
+          <PoseProp pose={idleActivity.pose} />
+        </div>
+      )}
       {expression === "sleepy" && <div className="buddy-zzz">z z z</div>}
       {expression === "thinking" && <div className="buddy-think-bubble">···</div>}
       {celebrate && <div className="buddy-celebrate-bubble">{celebrateMsg}</div>}
+      {idleActivity && <div className="buddy-activity-bubble">{idleActivity.label}</div>}
       {recapActive && (
         <div className="buddy-recap-bubble">
           {recapMsgLines.map((line) => (
@@ -292,7 +373,17 @@ function StatsRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function BuddySprite({ expression, blinking }: { expression: Expression; blinking: boolean }) {
+function BuddySprite({
+  expression,
+  blinking,
+  earTwitch,
+  pose,
+}: {
+  expression: Expression;
+  blinking: boolean;
+  earTwitch: boolean;
+  pose: Pose | null;
+}) {
   const fur = "#eda354";
   const muzzle = "#fdf1de";
   const ink = "#3b2a1a";
@@ -315,11 +406,16 @@ function BuddySprite({ expression, blinking }: { expression: Expression; blinkin
         <rect x="14" y="12" width="1" height="2" fill={muzzle} />
       </g>
 
-      {/* ears */}
-      <rect x="3" y="0" width="1" height="1" fill={fur} />
-      <rect x="2" y="1" width="2" height="1" fill={fur} />
-      <rect x="12" y="0" width="1" height="1" fill={fur} />
-      <rect x="12" y="1" width="2" height="1" fill={fur} />
+      {/* ears (twitch briefly as an idle quirk) */}
+      <g
+        className={earTwitch ? "buddy-ear-twitch" : undefined}
+        style={{ transformBox: "fill-box", transformOrigin: "bottom center" }}
+      >
+        <rect x="3" y="0" width="1" height="1" fill={fur} />
+        <rect x="2" y="1" width="2" height="1" fill={fur} />
+        <rect x="12" y="0" width="1" height="1" fill={fur} />
+        <rect x="12" y="1" width="2" height="1" fill={fur} />
+      </g>
 
       {/* head */}
       <rect x="4" y="2" width="8" height="1" fill={fur} />
@@ -343,9 +439,27 @@ function BuddySprite({ expression, blinking }: { expression: Expression; blinkin
       <rect x="12" y="18" width="1" height="1" fill={fur} />
       <rect x="4" y="18" width="8" height="1" fill={fur} />
 
-      {/* paws */}
-      <rect x="4" y="19" width="3" height="2" fill={fur} />
-      <rect x="9" y="19" width="3" height="2" fill={fur} />
+      {/* paws — folded into a seated cross-legged shape for yoga, otherwise the normal two-block stance */}
+      {pose === "yoga" ? (
+        <>
+          <rect x="4" y="19" width="8" height="1" fill={fur} />
+          <rect x="3" y="21" width="10" height="1" fill={muzzle} /> {/* meditation cushion */}
+        </>
+      ) : (
+        <>
+          <rect x="4" y="19" width="3" height="2" fill={fur} />
+          <rect x="9" y="19" width="3" height="2" fill={fur} />
+        </>
+      )}
+
+      {/* blanket, drawn over the lower body/paws for the late-night sleeping pose */}
+      {pose === "sleeping" && (
+        <>
+          <rect x="3" y="18" width="10" height="3" fill={muzzle} />
+          <rect x="5" y="19" width="1" height="1" fill={ink} />
+          <rect x="10" y="19" width="1" height="1" fill={ink} />
+        </>
+      )}
 
       {/* eyebrows (oops only) */}
       {expression === "oops" && (
@@ -412,6 +526,70 @@ function BuddySprite({ expression, blinking }: { expression: Expression; blinkin
         </>
       ) : (
         <rect x="7" y="9" width="2" height="1" fill={ink} />
+      )}
+    </svg>
+  );
+}
+
+const PROP_SIZE = 20;
+
+/** Small side-icon props for the six "prop" poses (yoga/sleeping instead change the buddy's own body — see BuddySprite). */
+function PoseProp({ pose }: { pose: Pose }) {
+  const fur = "#eda354";
+  const muzzle = "#fdf1de";
+  const ink = "#3b2a1a";
+
+  return (
+    <svg viewBox="0 0 8 8" width={PROP_SIZE} height={PROP_SIZE} shapeRendering="crispEdges">
+      {pose === "coffee" && (
+        <>
+          <rect x="2" y="3" width="4" height="4" fill={muzzle} />
+          <rect x="6" y="4" width="1" height="2" fill={muzzle} />
+          <rect x="2" y="7" width="4" height="1" fill={ink} />
+          <rect x="3" y="1" width="1" height="1" fill={ink} />
+          <rect x="4" y="0" width="1" height="1" fill={ink} />
+        </>
+      )}
+      {pose === "lunch" && (
+        <>
+          <rect x="1" y="4" width="6" height="2" fill={muzzle} />
+          <rect x="1" y="6" width="6" height="1" fill={ink} />
+          <rect x="3" y="3" width="2" height="1" fill={ink} />
+        </>
+      )}
+      {pose === "working" && (
+        <>
+          <rect x="1" y="4" width="6" height="3" fill={fur} />
+          <rect x="1" y="1" width="6" height="3" fill={muzzle} />
+          <rect x="2" y="2" width="4" height="1" fill={ink} />
+        </>
+      )}
+      {pose === "friends" && (
+        <>
+          <rect x="1" y="1" width="6" height="4" fill={muzzle} />
+          <rect x="1" y="5" width="1" height="1" fill={muzzle} />
+          <rect x="2" y="2" width="1" height="1" fill={ink} />
+          <rect x="4" y="2" width="1" height="1" fill={ink} />
+          <rect x="6" y="2" width="1" height="1" fill={ink} />
+        </>
+      )}
+      {pose === "cooking" && (
+        <>
+          <rect x="1" y="3" width="6" height="3" fill={fur} />
+          <rect x="0" y="4" width="1" height="1" fill={fur} />
+          <rect x="7" y="4" width="1" height="1" fill={fur} />
+          <rect x="3" y="1" width="1" height="1" fill={ink} />
+          <rect x="4" y="0" width="1" height="1" fill={ink} />
+        </>
+      )}
+      {pose === "reading" && (
+        <>
+          <rect x="1" y="2" width="2" height="4" fill={muzzle} />
+          <rect x="3" y="2" width="1" height="4" fill={ink} />
+          <rect x="4" y="2" width="3" height="4" fill={muzzle} />
+          <rect x="2" y="3" width="1" height="1" fill={ink} />
+          <rect x="5" y="3" width="1" height="1" fill={ink} />
+        </>
       )}
     </svg>
   );
