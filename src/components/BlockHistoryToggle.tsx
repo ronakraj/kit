@@ -7,7 +7,7 @@ export function BlockHistoryToggle() {
   return (
     <button
       onClick={toggleBlockHistory}
-      title={showBlockHistory ? "Hide edit history" : "Show edit history on hover"}
+      title={showBlockHistory ? "Hide edit history gutter" : "Show edit history gutter"}
       className="fixed right-[4.75rem] top-3 z-30 flex h-7 w-7 items-center justify-center rounded text-sm"
       style={{ color: showBlockHistory ? "var(--accent)" : "var(--text-muted)" }}
     >

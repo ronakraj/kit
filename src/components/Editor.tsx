@@ -28,6 +28,7 @@ import {
   type NoteHistory,
 } from "../lib/blockHistory";
 import { getAuthorId } from "../lib/vault";
+import { extractPasteSourceUrl } from "../lib/pasteSource";
 import { TagChips } from "./TagChips";
 import { BacklinksPanel } from "./BacklinksPanel";
 
@@ -146,7 +147,8 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
 
   const [titleDraft, setTitleDraft] = useState(currentNote?.title ?? "");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [hoverTooltip, setHoverTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [gutterEntries, setGutterEntries] = useState<{ id: string; top: number; short: string; full: string }[]>([]);
+  const gutterWrapRef = useRef<HTMLDivElement | null>(null);
   const initialBlocks = useMemo(() => parseMarkdownToBlocks(initialBody), [path]);
   const uploadFile = useMemo(() => createUploadFileHandler(vaultPath), [vaultPath]);
 
@@ -160,6 +162,36 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const historyRef = useRef<NoteHistory>(emptyHistory());
   const authorIdRef = useRef<string>("local");
 
+  // Recomputes the gutter's per-block labels from the live DOM (each block's
+  // rendered position) and `historyRef` (its metadata). Called after content
+  // changes, history updates, the toggle flips, or the window resizes (since
+  // line-wrapping shifts block heights/positions).
+  const recomputeGutter = () => {
+    if (!showBlockHistory || !gutterWrapRef.current) {
+      setGutterEntries((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const containerRect = gutterWrapRef.current.getBoundingClientRect();
+    const blockEls = gutterWrapRef.current.querySelectorAll<HTMLElement>("[data-id]");
+    const seen = new Set<string>();
+    const entries: { id: string; top: number; short: string; full: string }[] = [];
+    blockEls.forEach((el) => {
+      const id = el.getAttribute("data-id");
+      if (!id || seen.has(id)) return;
+      const meta = historyRef.current.blocks[id];
+      if (!meta) return;
+      seen.add(id);
+      const rect = el.getBoundingClientRect();
+      entries.push({
+        id,
+        top: rect.top - containerRect.top,
+        short: formatRelativeTime(meta.lastModifiedAt),
+        full: `Added ${formatRelativeTime(meta.createdAt)} · Modified ${formatRelativeTime(meta.lastModifiedAt)}`,
+      });
+    });
+    setGutterEntries(entries);
+  };
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -167,12 +199,23 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
       if (!cancelled) {
         historyRef.current = history;
         authorIdRef.current = authorId;
+        requestAnimationFrame(recomputeGutter);
       }
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultPath, path]);
+
+  // Re-measure whenever the toggle flips or the window resizes (text
+  // reflow shifts every block below it).
+  useEffect(() => {
+    requestAnimationFrame(recomputeGutter);
+    window.addEventListener("resize", recomputeGutter);
+    return () => window.removeEventListener("resize", recomputeGutter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBlockHistory]);
 
   const timerRef = useRef<number | null>(null);
   const flush = () => {
@@ -192,12 +235,17 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     );
     historyRef.current = nextHistory;
     void writeNoteHistory(vaultPath, path, nextHistory);
+    requestAnimationFrame(recomputeGutter);
   };
 
   useEffect(() => {
     const unsubscribe = editor.onChange(() => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(flush, SAVE_DEBOUNCE_MS);
+      // Block heights can shift immediately as you type (line wrapping),
+      // independent of the debounced autosave — keep the gutter positions
+      // in step with that, even though the metadata itself only updates on save.
+      requestAnimationFrame(recomputeGutter);
     });
     // Flush immediately if the app is closing/reloading so nothing typed in
     // the last debounce window gets lost.
@@ -291,6 +339,35 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     }
   };
 
+  // When pasted content carries a source URL — the "CF_HTML" clipboard format
+  // some browsers (notably on Windows) attach a `SourceURL:` header to when
+  // you copy from a web page — drop a small citation line after it, similar
+  // to OneNote. This is inherently best-effort: not every OS/browser/source
+  // populates this header, so most pastes just proceed normally with nothing
+  // added.
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const html = e.clipboardData?.getData("text/html");
+    if (!html) return;
+    const sourceUrl = extractPasteSourceUrl(html);
+    if (!sourceUrl) return;
+    // Let the paste land first (BlockNote/ProseMirror handles the actual
+    // insertion from the same clipboard event), then append the citation
+    // after wherever the cursor ends up.
+    setTimeout(() => {
+      const cursorBlock = editor.getTextCursorPosition().block;
+      editor.insertBlocks(
+        [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: `Source: ${sourceUrl}`, styles: { italic: true, textColor: "gray" } }],
+          },
+        ],
+        cursorBlock.id,
+        "after"
+      );
+    }, 0);
+  };
+
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const blockEl = (e.target as HTMLElement).closest?.("[data-id]") as HTMLElement | null;
     const blockId = blockEl?.getAttribute("data-id");
@@ -322,27 +399,6 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     const trimmed = titleDraft.trim();
     if (trimmed && trimmed !== currentNote?.title) void renameCurrentNote(trimmed);
     else setTitleDraft(currentNote?.title ?? "");
-  };
-
-  const handleContainerMouseOver = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!showBlockHistory) return;
-    const blockEl = (e.target as HTMLElement).closest?.("[data-id]") as HTMLElement | null;
-    const blockId = blockEl?.getAttribute("data-id");
-    const meta = blockId ? historyRef.current.blocks[blockId] : undefined;
-    if (!blockEl || !meta) {
-      setHoverTooltip(null);
-      return;
-    }
-    const rect = blockEl.getBoundingClientRect();
-    setHoverTooltip({
-      x: rect.left,
-      y: rect.top,
-      text: `Added ${formatRelativeTime(meta.createdAt)} · Modified ${formatRelativeTime(meta.lastModifiedAt)}`,
-    });
-  };
-
-  const handleContainerMouseOut = () => {
-    if (hoverTooltip) setHoverTooltip(null);
   };
 
   return (
@@ -381,7 +437,17 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
           <TagChips />
         </div>
 
-        <div onClick={handleContainerClick} onMouseOver={handleContainerMouseOver} onMouseOut={handleContainerMouseOut}>
+        <div ref={gutterWrapRef} className="relative" onClick={handleContainerClick} onPaste={handlePaste}>
+          {gutterEntries.map((g) => (
+            <div
+              key={g.id}
+              className="block-history-gutter-entry"
+              style={{ top: g.top, color: "var(--text-muted)" }}
+              title={g.full}
+            >
+              {g.short}
+            </div>
+          ))}
           <ResearchTriggerContext.Provider value={triggerResearch}>
             <BlockNoteView
               editor={editor}
@@ -402,22 +468,6 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
 
         <BacklinksPanel />
       </div>
-
-      {hoverTooltip && (
-        <div
-          className="block-history-tooltip"
-          style={{
-            position: "fixed",
-            left: hoverTooltip.x,
-            top: Math.max(hoverTooltip.y - 28, 4),
-            background: "var(--bg-panel)",
-            borderColor: "var(--border)",
-            color: "var(--text-muted)",
-          }}
-        >
-          {hoverTooltip.text}
-        </div>
-      )}
     </div>
   );
 }

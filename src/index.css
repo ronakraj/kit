@@ -45,15 +45,18 @@ body {
   color: var(--text);
 }
 
-.block-history-tooltip {
-  z-index: 50;
-  pointer-events: none;
+.block-history-gutter-entry {
+  position: absolute;
+  left: -64px;
+  width: 56px;
+  text-align: right;
+  pointer-events: auto;
   white-space: nowrap;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 11px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: default;
 }
 
 .math-block {
