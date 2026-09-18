@@ -45,6 +45,17 @@ body {
   color: var(--text);
 }
 
+.block-history-tooltip {
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
 .math-block {
   margin: 8px 0;
   padding: 10px 12px;

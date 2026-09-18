@@ -16,6 +16,18 @@ import { createUploadFileHandler } from "../lib/attachments";
 import { researchTerm } from "../lib/ai";
 import { toPersistableBlocks, fromPersistedBlocks, type AnyBlock } from "../lib/mathBlocks";
 import { mathSchema, getMathSlashMenuItems, type MathPartialBlock } from "./mathBlocks";
+import {
+  encodeBlockMarker,
+  splitMarkedMarkdown,
+  diffBlocks,
+  appendSnapshot,
+  emptyHistory,
+  formatRelativeTime,
+  readNoteHistory,
+  writeNoteHistory,
+  type NoteHistory,
+} from "../lib/blockHistory";
+import { getAuthorId } from "../lib/vault";
 import { TagChips } from "./TagChips";
 import { BacklinksPanel } from "./BacklinksPanel";
 
@@ -23,17 +35,65 @@ const SAVE_DEBOUNCE_MS = 600;
 const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
 const GO_DEEPER_TEXT = "🔍 Go deeper";
 
+/**
+ * Parses markdown back into blocks, reattaching each top-level block's
+ * stable id from its `<!--kb:ID-->` marker (see `blockHistory.ts`) so
+ * created/modified history survives across app restarts. Content with no
+ * marker (legacy notes, or ones edited outside the app) still parses fine,
+ * it just starts fresh history from its next save.
+ */
 function parseMarkdownToBlocks(markdown: string): MathPartialBlock[] {
   const parser = BlockNoteEditor.create({ schema: mathSchema });
-  const blocks = parser.tryParseMarkdownToBlocks(markdown);
-  const withMath = fromPersistedBlocks(blocks as unknown as AnyBlock[]) as unknown as MathPartialBlock[];
-  return withMath.length > 0 ? withMath : [{ type: "paragraph" }];
+  const chunks = splitMarkedMarkdown(markdown);
+  const allBlocks: MathPartialBlock[] = [];
+
+  for (const { id, chunk } of chunks) {
+    const parsedChunkBlocks = parser.tryParseMarkdownToBlocks(chunk) as unknown as AnyBlock[];
+    const withMath = fromPersistedBlocks(parsedChunkBlocks) as unknown as MathPartialBlock[];
+
+    if (withMath.length === 0) {
+      if (id) allBlocks.push({ type: "paragraph", id });
+      continue;
+    }
+    if (id) {
+      // A chunk parsing into multiple blocks is rare (top-level chunking is
+      // usually 1:1), but if it happens, the stable id goes to the first
+      // resulting block; the rest just start fresh history.
+      const [first, ...rest] = withMath;
+      allBlocks.push({ ...first, id }, ...rest);
+    } else {
+      allBlocks.push(...withMath);
+    }
+  }
+
+  return allBlocks.length > 0 ? allBlocks : [{ type: "paragraph" }];
 }
 
-/** Converts custom equation/plot blocks back to plain code blocks before serializing to markdown, so notes stay portable plain-text files. */
-function toMarkdown(editor: { document: unknown; blocksToMarkdownLossy: (blocks?: MathPartialBlock[]) => string }): string {
-  const persistable = toPersistableBlocks(editor.document as unknown as AnyBlock[]) as unknown as MathPartialBlock[];
-  return editor.blocksToMarkdownLossy(persistable);
+/**
+ * Converts the editor's current document into markdown for saving: each
+ * top-level block is transformed (math blocks -> code blocks) and rendered
+ * to markdown individually, wrapped in a `<!--kb:ID-->` marker so its stable
+ * id round-trips through the plain-text file. Also returns each block's
+ * rendered content alongside its id, for `diffBlocks` to compare against the
+ * previous save.
+ */
+function buildMarkdownWithHistory(editor: {
+  document: unknown;
+  blocksToMarkdownLossy: (blocks?: MathPartialBlock[]) => string;
+}): { markdown: string; entries: { id: string; content: string }[] } {
+  const topBlocks = editor.document as MathPartialBlock[];
+  const entries: { id: string; content: string }[] = [];
+  const chunks: string[] = [];
+
+  for (const block of topBlocks) {
+    if (!block.id) continue;
+    const [persistable] = toPersistableBlocks([block as unknown as AnyBlock]) as unknown as MathPartialBlock[];
+    const content = editor.blocksToMarkdownLossy([persistable]).trim();
+    entries.push({ id: block.id, content });
+    chunks.push(`${encodeBlockMarker(block.id)}\n${content}`);
+  }
+
+  return { markdown: chunks.join("\n\n"), entries };
 }
 
 /** Provides the "research selected term" trigger down to the custom formatting toolbar button. */
@@ -80,13 +140,37 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const navigateToNoteTitle = useAppStore((s) => s.navigateToNoteTitle);
   const beginResearch = useAppStore((s) => s.beginResearch);
   const endResearch = useAppStore((s) => s.endResearch);
+  const showBlockHistory = useAppStore((s) => s.showBlockHistory);
 
   const [titleDraft, setTitleDraft] = useState(currentNote?.title ?? "");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [hoverTooltip, setHoverTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
   const initialBlocks = useMemo(() => parseMarkdownToBlocks(initialBody), [path]);
   const uploadFile = useMemo(() => createUploadFileHandler(vaultPath), [vaultPath]);
 
   const editor = useCreateBlockNote({ schema: mathSchema, initialContent: initialBlocks, uploadFile });
+
+  // Block-level edit history (git-blame-ish): loaded once per note, updated
+  // in-memory on every save, and written to a JSON sidecar under
+  // `_history/` so it survives restarts without touching the note's own
+  // plain markdown file. Read via ref (not state) since the hover tooltip
+  // only needs it at hover time, not as a rendered/reactive value.
+  const historyRef = useRef<NoteHistory>(emptyHistory());
+  const authorIdRef = useRef<string>("local");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [history, authorId] = await Promise.all([readNoteHistory(vaultPath, path), getAuthorId()]);
+      if (!cancelled) {
+        historyRef.current = history;
+        authorIdRef.current = authorId;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultPath, path]);
 
   const timerRef = useRef<number | null>(null);
   const flush = () => {
@@ -95,8 +179,17 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
       timerRef.current = null;
     }
     setSaveStatus("saving");
-    const markdown = toMarkdown(editor);
+    const { markdown, entries } = buildMarkdownWithHistory(editor);
     void persistNoteBody(path, markdown).then(() => setSaveStatus("saved"));
+
+    const now = new Date().toISOString();
+    const nextBlocks = diffBlocks(historyRef.current.blocks, entries, authorIdRef.current, now);
+    const nextHistory = appendSnapshot(
+      { ...historyRef.current, blocks: nextBlocks },
+      { timestamp: now, authorId: authorIdRef.current, markdown }
+    );
+    historyRef.current = nextHistory;
+    void writeNoteHistory(vaultPath, path, nextHistory);
   };
 
   useEffect(() => {
@@ -214,6 +307,27 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     else setTitleDraft(currentNote?.title ?? "");
   };
 
+  const handleContainerMouseOver = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!showBlockHistory) return;
+    const blockEl = (e.target as HTMLElement).closest?.("[data-id]") as HTMLElement | null;
+    const blockId = blockEl?.getAttribute("data-id");
+    const meta = blockId ? historyRef.current.blocks[blockId] : undefined;
+    if (!blockEl || !meta) {
+      setHoverTooltip(null);
+      return;
+    }
+    const rect = blockEl.getBoundingClientRect();
+    setHoverTooltip({
+      x: rect.left,
+      y: rect.top,
+      text: `Added ${formatRelativeTime(meta.createdAt)} · Modified ${formatRelativeTime(meta.lastModifiedAt)}`,
+    });
+  };
+
+  const handleContainerMouseOut = () => {
+    if (hoverTooltip) setHoverTooltip(null);
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-8 pt-10">
@@ -250,7 +364,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
           <TagChips />
         </div>
 
-        <div onClick={handleContainerClick}>
+        <div onClick={handleContainerClick} onMouseOver={handleContainerMouseOver} onMouseOut={handleContainerMouseOut}>
           <ResearchTriggerContext.Provider value={triggerResearch}>
             <BlockNoteView
               editor={editor}
@@ -271,6 +385,22 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
 
         <BacklinksPanel />
       </div>
+
+      {hoverTooltip && (
+        <div
+          className="block-history-tooltip"
+          style={{
+            position: "fixed",
+            left: hoverTooltip.x,
+            top: Math.max(hoverTooltip.y - 28, 4),
+            background: "var(--bg-panel)",
+            borderColor: "var(--border)",
+            color: "var(--text-muted)",
+          }}
+        >
+          {hoverTooltip.text}
+        </div>
+      )}
     </div>
   );
 }

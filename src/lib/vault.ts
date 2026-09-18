@@ -10,7 +10,9 @@ import {
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import { load as loadStore, type Store } from "@tauri-apps/plugin-store";
+import { v4 as uuidv4 } from "uuid";
 import { parseNoteFile, serializeNoteFile, emptyMeta } from "./frontmatter";
+import { HISTORY_DIR } from "./blockHistory";
 import type { NoteRecord, TreeEntry } from "./types";
 
 export const DAILY_DIR = "Daily";
@@ -18,6 +20,7 @@ export const ATTACHMENTS_DIR = "_attachments";
 const SETTINGS_FILE = "settings.json";
 const VAULT_PATH_KEY = "vaultPath";
 const LAST_RECAP_DATE_KEY = "lastRecapDate";
+const AUTHOR_ID_KEY = "authorId";
 
 let settingsStore: Store | null = null;
 
@@ -50,6 +53,22 @@ export async function saveLastRecapDate(dateISO: string): Promise<void> {
   await store.save();
 }
 
+/**
+ * A stable local identity for attributing block-level edit history. There's
+ * no accounts/multi-user infrastructure yet — this is forward-looking
+ * scaffolding so a future sync/collaboration feature has an author id to
+ * key off of. Generated once and persisted.
+ */
+export async function getAuthorId(): Promise<string> {
+  const store = await getSettingsStore();
+  const existing = await store.get<string>(AUTHOR_ID_KEY);
+  if (existing) return existing;
+  const id = uuidv4();
+  await store.set(AUTHOR_ID_KEY, id);
+  await store.save();
+  return id;
+}
+
 /** Opens a native directory picker and returns the chosen path, or null if cancelled. */
 export async function pickVaultFolder(): Promise<string | null> {
   const selected = await openDialog({ directory: true, multiple: false });
@@ -61,8 +80,10 @@ export async function pickVaultFolder(): Promise<string | null> {
 export async function ensureVaultScaffold(vaultPath: string): Promise<void> {
   const dailyPath = await join(vaultPath, DAILY_DIR);
   const attachmentsPath = await join(vaultPath, ATTACHMENTS_DIR);
+  const historyPath = await join(vaultPath, HISTORY_DIR);
   if (!(await exists(dailyPath))) await mkdir(dailyPath, { recursive: true });
   if (!(await exists(attachmentsPath))) await mkdir(attachmentsPath, { recursive: true });
+  if (!(await exists(historyPath))) await mkdir(historyPath, { recursive: true });
 }
 
 export function joinRelative(...parts: string[]): string {
@@ -76,7 +97,7 @@ function titleFromFilename(name: string): string {
   return name.replace(/\.md$/i, "");
 }
 
-/** Recursively builds the folder/note tree for the vault, skipping the attachments folder. */
+/** Recursively builds the folder/note tree for the vault, skipping the attachments and history folders. */
 export async function buildTree(vaultPath: string, relativePath = ""): Promise<TreeEntry[]> {
   const absDir = relativePath ? await join(vaultPath, relativePath) : vaultPath;
   const entries = await readDir(absDir);
@@ -88,7 +109,7 @@ export async function buildTree(vaultPath: string, relativePath = ""): Promise<T
     const lowerName = entry.name.toLowerCase();
 
     if (entry.isDirectory) {
-      if (relativePath === "" && entry.name === ATTACHMENTS_DIR) continue;
+      if (relativePath === "" && (entry.name === ATTACHMENTS_DIR || entry.name === HISTORY_DIR)) continue;
       const children = await buildTree(vaultPath, entryRelPath);
       result.push({ kind: "folder", name: entry.name, path: entryRelPath, children });
     } else if (entry.isFile && lowerName.endsWith(".md")) {

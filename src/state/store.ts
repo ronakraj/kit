@@ -20,6 +20,7 @@ interface AppState {
   quickSwitcherOpen: boolean;
   insightsPanelOpen: boolean;
   sidebarHidden: boolean;
+  showBlockHistory: boolean;
   error: string | null;
   clearError: () => void;
   promptRequest: { message: string; defaultValue: string } | null;
@@ -50,6 +51,7 @@ interface AppState {
   setQuickSwitcherOpen: (open: boolean) => void;
   setInsightsPanelOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  toggleBlockHistory: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -64,6 +66,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   quickSwitcherOpen: false,
   insightsPanelOpen: false,
   sidebarHidden: false,
+  showBlockHistory: false,
   error: null,
   clearError: () => set({ error: null }),
   promptRequest: null,
@@ -230,6 +233,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setQuickSwitcherOpen: (open) => set({ quickSwitcherOpen: open }),
   setInsightsPanelOpen: (open) => set({ insightsPanelOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarHidden: !s.sidebarHidden })),
+  toggleBlockHistory: () => set((s) => ({ showBlockHistory: !s.showBlockHistory })),
 }));
 
 export function useBacklinksForCurrentNote() {

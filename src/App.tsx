@@ -9,6 +9,7 @@ import { DeskBuddy } from "./components/DeskBuddy";
 import { FocusToggle } from "./components/FocusToggle";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { InsightsToggle } from "./components/InsightsToggle";
+import { BlockHistoryToggle } from "./components/BlockHistoryToggle";
 
 function App() {
   const vaultPath = useAppStore((s) => s.vaultPath);
@@ -37,6 +38,7 @@ function App() {
       <DeskBuddy />
       <InsightsPanel />
       <InsightsToggle />
+      <BlockHistoryToggle />
       <FocusToggle />
     </div>
   );
