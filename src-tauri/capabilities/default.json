@@ -12,6 +12,7 @@
     "dialog:allow-confirm",
     "dialog:allow-ask",
     "store:default",
+    "core:window:allow-set-always-on-top",
     {
       "identifier": "fs:scope",
       "allow": [

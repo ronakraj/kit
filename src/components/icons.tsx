@@ -44,3 +44,12 @@ export function LayersIcon() {
     </svg>
   );
 }
+
+export function PinIcon() {
+  return (
+    <svg {...common} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3h4l.5 5.5L15 10.5V12H5v-1.5l2.5-2z" />
+      <path d="M10 12v5" />
+    </svg>
+  );
+}

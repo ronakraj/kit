@@ -21,6 +21,7 @@ const SETTINGS_FILE = "settings.json";
 const VAULT_PATH_KEY = "vaultPath";
 const LAST_RECAP_DATE_KEY = "lastRecapDate";
 const AUTHOR_ID_KEY = "authorId";
+const ALWAYS_ON_TOP_KEY = "alwaysOnTop";
 
 let settingsStore: Store | null = null;
 
@@ -50,6 +51,17 @@ export async function getLastRecapDate(): Promise<string | undefined> {
 export async function saveLastRecapDate(dateISO: string): Promise<void> {
   const store = await getSettingsStore();
   await store.set(LAST_RECAP_DATE_KEY, dateISO);
+  await store.save();
+}
+
+export async function getSavedAlwaysOnTop(): Promise<boolean> {
+  const store = await getSettingsStore();
+  return (await store.get<boolean>(ALWAYS_ON_TOP_KEY)) ?? false;
+}
+
+export async function saveAlwaysOnTop(value: boolean): Promise<void> {
+  const store = await getSettingsStore();
+  await store.set(ALWAYS_ON_TOP_KEY, value);
   await store.save();
 }
 

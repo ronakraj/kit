@@ -14,6 +14,7 @@ import { InsightsToggle } from "./components/InsightsToggle";
 import { BlockHistoryToggle } from "./components/BlockHistoryToggle";
 import { NoteHistoryPanel } from "./components/NoteHistoryPanel";
 import { NoteHistoryToggle } from "./components/NoteHistoryToggle";
+import { AlwaysOnTopToggle } from "./components/AlwaysOnTopToggle";
 
 function MainPane() {
   const todosViewOpen = useAppStore((s) => s.todosViewOpen);
@@ -54,6 +55,7 @@ function App() {
       <BlockHistoryToggle />
       <NoteHistoryPanel />
       <NoteHistoryToggle />
+      <AlwaysOnTopToggle />
       <FocusToggle />
     </div>
   );
