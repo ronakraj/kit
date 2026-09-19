@@ -89,18 +89,6 @@ export function Sidebar() {
         ✓ Todos
       </button>
 
-      <button
-        onClick={() => void openTrash()}
-        className="border-b px-3 py-2 text-left text-sm font-medium"
-        style={{
-          borderColor: "var(--border)",
-          background: trashViewOpen ? "var(--bg-hover)" : "transparent",
-          color: "var(--text)",
-        }}
-      >
-        🗑 Trash
-      </button>
-
       <div className="flex-1 overflow-y-auto py-1">
         {searchResults ? (
           <ResultList notes={searchResults} currentPath={currentPath} onOpen={openPath} emptyLabel="No matches" />
@@ -139,6 +127,18 @@ export function Sidebar() {
           </div>
         </div>
       )}
+
+      <button
+        onClick={() => void openTrash()}
+        className="border-t px-3 py-2 text-left text-sm font-medium"
+        style={{
+          borderColor: "var(--border)",
+          background: trashViewOpen ? "var(--bg-hover)" : "transparent",
+          color: "var(--text)",
+        }}
+      >
+        🗑 Trash
+      </button>
     </div>
   );
 }
