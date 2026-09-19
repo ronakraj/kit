@@ -84,7 +84,7 @@ export function InsightsPanel() {
 
         <div className="flex flex-col gap-6 px-5 py-4">
           <section>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
               Activity (last {ACTIVITY_DAYS} days)
             </div>
             {hasAnyActivity ? (
@@ -116,7 +116,7 @@ export function InsightsPanel() {
           </section>
 
           <section>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
               Words written (last {WORD_TREND_DAYS} days)
             </div>
             {wordTrend.some((d) => d.words > 0) ? (
@@ -142,7 +142,7 @@ export function InsightsPanel() {
           </section>
 
           <section>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+            <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
               Top tags
             </div>
             {tagCounts.length > 0 ? (
@@ -173,7 +173,7 @@ export function InsightsPanel() {
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <section>
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+              <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
                 Most connected
               </div>
               {connectivity.hubs.length > 0 ? (
@@ -200,7 +200,7 @@ export function InsightsPanel() {
             </section>
 
             <section>
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+              <div className="mb-2 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
                 Orphan notes
               </div>
               {connectivity.orphans.length > 0 ? (

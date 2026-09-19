@@ -111,7 +111,7 @@ function BoundTodoDetail({ item }: { item: TodoItem }) {
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="mb-3 w-full bg-transparent text-3xl font-bold outline-none"
+          className="title-input mb-3 w-full bg-transparent text-3xl font-bold outline-none"
           style={{ color: "var(--text)" }}
         />
 

@@ -497,7 +497,7 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-full bg-transparent text-3xl font-bold outline-none"
+            className="title-input w-full bg-transparent text-3xl font-bold outline-none"
             style={{ color: "var(--text)" }}
           />
           <div className="mt-2 flex shrink-0 items-center gap-3">

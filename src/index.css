@@ -1,24 +1,62 @@
 @import "tailwindcss";
 
+/* Self-hosted rather than loaded from Google Fonts at runtime — Kit is
+   local-first and should render correctly with no network access. See
+   src/assets/fonts/README.md for licensing. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./assets/fonts/plexsans-var.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/plexmono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/plexmono-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("./assets/fonts/sourceserif4-var.woff2") format("woff2");
+}
+
 :root {
-  --bg: #fafaf9;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Cool, neutral "ink and steel" palette — deliberately not warm/cream, so
+     the desk buddy's fur is the only warm color anywhere in the app. */
+  --bg: #eef0f3;
   --bg-panel: #ffffff;
-  --bg-hover: #f1f0ee;
-  --border: #e7e5e4;
-  --text: #1c1917;
-  --text-muted: #78716c;
-  --accent: #6d5efc;
+  --bg-hover: #e3e7eb;
+  --border: #dbe0e5;
+  --text: #1c2430;
+  --text-muted: #67717d;
+  --accent: #35577a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17161a;
-    --bg-panel: #1e1c21;
-    --bg-hover: #29272e;
-    --border: #322f37;
-    --text: #f2f1f4;
-    --text-muted: #9a97a3;
-    --accent: #9b8cff;
+    --bg: #14181d;
+    --bg-panel: #1c2128;
+    --bg-hover: #262c34;
+    --border: #2e353d;
+    --text: #e7eaed;
+    --text-muted: #8b95a1;
+    --accent: #7fa8cc;
   }
 }
 
@@ -32,8 +70,31 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+h3,
+.title-input {
+  font-family: var(--font-serif);
+}
+
+/* BlockNote sets its own hardcoded font-family on editable content and
+   renders headings as styled divs rather than semantic <h1-6> tags — target
+   both explicitly so the editor's actual text picks up the app's fonts. */
+.bn-default-styles {
+  font-family: var(--font-sans) !important;
+}
+.bn-block-content[data-content-type="heading"] {
+  font-family: var(--font-serif);
+}
+
+code,
+pre,
+.math-block-input,
+.math-block-range-input {
+  font-family: var(--font-mono);
 }
 
 .bn-container {
