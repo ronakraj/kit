@@ -5,6 +5,9 @@ import {
   computeTagCounts,
   computeWordTrend,
   computeRecap,
+  computeDaySummary,
+  formatDaySummaryMarkdown,
+  DAILY_SUMMARY_HEADING,
 } from "./insights";
 import type { TreeEntry, NoteMeta } from "./types";
 import type { VaultScanResult } from "./vaultScan";
@@ -192,5 +195,67 @@ describe("computeRecap", () => {
     expect(recap.notesThisWeek).toBe(3);
     expect(recap.mostActiveDay).toEqual({ date: "2024-06-15", count: 2 });
     expect(recap.standoutNote).toEqual({ name: "Hub", path: "Hub.md", linkCount: 2 });
+  });
+});
+
+describe("computeDaySummary", () => {
+  it("returns an empty summary for a null scan", () => {
+    expect(computeDaySummary([note("A")], null, "2024-06-15")).toEqual({ date: "2024-06-15", notes: [] });
+  });
+
+  it("includes only notes last saved on the given day, sorted by name", () => {
+    const tree: TreeEntry[] = [note("Zebra"), note("Apple"), note("Old")];
+    const scan = emptyScan();
+    scan.metaByPath.set("Zebra.md", meta({ updatedAt: "2024-06-15T09:00:00.000Z" }));
+    scan.metaByPath.set("Apple.md", meta({ updatedAt: "2024-06-15T10:00:00.000Z" }));
+    scan.metaByPath.set("Old.md", meta({ updatedAt: "2024-06-10T10:00:00.000Z" }));
+
+    const summary = computeDaySummary(tree, scan, "2024-06-15");
+    expect(summary.notes.map((n) => n.name)).toEqual(["Apple", "Zebra"]);
+  });
+
+  it("marks a note as `created` only when it was also created that day", () => {
+    const tree: TreeEntry[] = [note("Fresh"), note("Reopened")];
+    const scan = emptyScan();
+    scan.metaByPath.set(
+      "Fresh.md",
+      meta({ createdAt: "2024-06-15T08:00:00.000Z", updatedAt: "2024-06-15T09:00:00.000Z" })
+    );
+    scan.metaByPath.set(
+      "Reopened.md",
+      meta({ createdAt: "2024-01-01T08:00:00.000Z", updatedAt: "2024-06-15T09:00:00.000Z" })
+    );
+
+    const summary = computeDaySummary(tree, scan, "2024-06-15");
+    expect(summary.notes.find((n) => n.name === "Fresh")?.created).toBe(true);
+    expect(summary.notes.find((n) => n.name === "Reopened")?.created).toBe(false);
+  });
+
+  it("carries each note's tags through", () => {
+    const tree: TreeEntry[] = [note("A")];
+    const scan = emptyScan();
+    scan.metaByPath.set("A.md", meta({ tags: ["ml", "reading"], updatedAt: "2024-06-15T09:00:00.000Z" }));
+    const summary = computeDaySummary(tree, scan, "2024-06-15");
+    expect(summary.notes[0].tags).toEqual(["ml", "reading"]);
+  });
+});
+
+describe("formatDaySummaryMarkdown", () => {
+  it("returns an empty string when there's nothing to say", () => {
+    expect(formatDaySummaryMarkdown({ date: "2024-06-15", notes: [] })).toBe("");
+  });
+
+  it("formats notes as wiki-linked bullets with tags and a (new) marker", () => {
+    const md = formatDaySummaryMarkdown({
+      date: "2024-06-15",
+      notes: [
+        { name: "CUDA", path: "CUDA.md", tags: ["ml"], created: true },
+        { name: "Old Note", path: "Old Note.md", tags: [], created: false },
+      ],
+    });
+    expect(md).toContain(DAILY_SUMMARY_HEADING);
+    expect(md).toContain("- [[CUDA]] *(new)* — #ml");
+    expect(md).toContain("- [[Old Note]]");
+    expect(md).not.toContain("Old Note]] *(new)*");
   });
 });

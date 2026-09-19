@@ -7,6 +7,7 @@ import { TodoListView } from "./components/TodoListView";
 import { TodoDetailView } from "./components/TodoDetailView";
 import { TrashView } from "./components/TrashView";
 import { GlobalUndo } from "./components/GlobalUndo";
+import { DailySummaryAutoAppend } from "./components/DailySummaryAutoAppend";
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { PromptDialog } from "./components/PromptDialog";
 import { DeskBuddy } from "./components/DeskBuddy";
@@ -64,6 +65,7 @@ function App() {
       <AlwaysOnTopToggle />
       <FocusToggle />
       <GlobalUndo />
+      <DailySummaryAutoAppend />
     </div>
   );
 }

@@ -20,6 +20,7 @@ export const ATTACHMENTS_DIR = "_attachments";
 const SETTINGS_FILE = "settings.json";
 const VAULT_PATH_KEY = "vaultPath";
 const LAST_RECAP_DATE_KEY = "lastRecapDate";
+const LAST_DAILY_SUMMARY_DATE_KEY = "lastDailySummaryDate";
 const AUTHOR_ID_KEY = "authorId";
 const ALWAYS_ON_TOP_KEY = "alwaysOnTop";
 
@@ -51,6 +52,17 @@ export async function getLastRecapDate(): Promise<string | undefined> {
 export async function saveLastRecapDate(dateISO: string): Promise<void> {
   const store = await getSettingsStore();
   await store.set(LAST_RECAP_DATE_KEY, dateISO);
+  await store.save();
+}
+
+export async function getLastDailySummaryDate(): Promise<string | undefined> {
+  const store = await getSettingsStore();
+  return store.get<string>(LAST_DAILY_SUMMARY_DATE_KEY);
+}
+
+export async function saveLastDailySummaryDate(dateISO: string): Promise<void> {
+  const store = await getSettingsStore();
+  await store.set(LAST_DAILY_SUMMARY_DATE_KEY, dateISO);
   await store.save();
 }
 

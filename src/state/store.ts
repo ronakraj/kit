@@ -6,7 +6,13 @@ import * as todosLib from "../lib/todos";
 import { markDone as markTodoDone, reopenItem as reopenTodoItem, type TodoItem } from "../lib/todos";
 import * as trashLib from "../lib/trash";
 import type { TrashEntry } from "../lib/trash";
+import { computeActivityCalendar, computeDaySummary, formatDaySummaryMarkdown, DAILY_SUMMARY_HEADING } from "../lib/insights";
 import type { NoteRecord, TreeEntry } from "../lib/types";
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const EMPTY_BACKLINKS: { name: string; path: string }[] = [];
 
@@ -62,6 +68,7 @@ interface AppState {
   permanentlyDeleteTrashEntry: (id: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
   undoLastDelete: () => Promise<boolean>;
+  appendDailySummaryIfNeeded: () => Promise<void>;
   setTagOnCurrentNote: (tag: string, add: boolean) => Promise<void>;
   setSelectedTag: (tag: string | null) => void;
   setSearchQuery: (q: string) => void;
@@ -166,7 +173,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!vaultPath) return;
     const tree = await vault.buildTree(vaultPath);
     const scan = await scanVault(vaultPath, tree);
-    set({ tree, scan });
+    // Also kept up to date here (not just in openTodos) so the sidebar's
+    // todo summary badge stays live without the Todos view being open.
+    const todoStore = await todosLib.readTodoStore(vaultPath);
+    set({ tree, scan, todos: todoStore.items });
   },
 
   /** Opens any page path (currently always a note). */
@@ -306,6 +316,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refresh();
     await get().openNote(restoredPath);
     return true;
+  },
+
+  // Once per day (first time the app is used that day), appends a "topics
+  // touched" section to the most recent prior day's Daily note, listing the
+  // notes written/edited that day. Silent — no UI of its own, just a vault
+  // write, so it's safe to fire from a background effect on app load.
+  appendDailySummaryIfNeeded: async () => {
+    const { vaultPath, tree, scan } = get();
+    if (!vaultPath || !scan) return;
+    const today = todayISO();
+    const last = await vault.getLastDailySummaryDate();
+    if (last === today) return;
+    await vault.saveLastDailySummaryDate(today);
+
+    const activity = computeActivityCalendar(tree, scan, 14);
+    const candidate = [...activity].reverse().find((d) => d.date < today && d.count > 0);
+    if (!candidate) return;
+
+    const notePath = `${vault.DAILY_DIR}/${candidate.date}.md`;
+    let note: NoteRecord;
+    try {
+      note = await vault.readNote(vaultPath, notePath);
+    } catch {
+      return; // no Daily note for that day — nothing to append to
+    }
+    if (note.body.includes(DAILY_SUMMARY_HEADING)) return;
+
+    const summary = computeDaySummary(tree, scan, candidate.date);
+    // Exclude the Daily note itself — it's the container being appended to, not a "topic".
+    const section = formatDaySummaryMarkdown({ ...summary, notes: summary.notes.filter((n) => n.path !== notePath) });
+    if (!section) return;
+
+    await vault.writeNote(vaultPath, { ...note, body: `${note.body.trimEnd()}\n\n${section}\n` });
+    await get().refresh();
   },
 
   setTagOnCurrentNote: async (tag: string, add: boolean) => {

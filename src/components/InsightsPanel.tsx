@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../state/store";
 import {
   computeActivityCalendar,
   computeConnectivity,
+  computeDaySummary,
   computeTagCounts,
   computeWordTrend,
 } from "../lib/insights";
@@ -24,6 +25,7 @@ export function InsightsPanel() {
   const scan = useAppStore((s) => s.scan);
   const openPath = useAppStore((s) => s.openPath);
   const requestRecap = useAppStore((s) => s.requestRecap);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +37,10 @@ export function InsightsPanel() {
   }, [open, setOpen]);
 
   const activity = useMemo(() => computeActivityCalendar(tree, scan, ACTIVITY_DAYS), [tree, scan]);
+  const daySummary = useMemo(
+    () => (selectedDay ? computeDaySummary(tree, scan, selectedDay) : null),
+    [selectedDay, tree, scan]
+  );
   const wordTrend = useMemo(() => computeWordTrend(tree, scan, WORD_TREND_DAYS), [tree, scan]);
   const tagCounts = useMemo(() => computeTagCounts(scan), [scan]);
   const connectivity = useMemo(() => computeConnectivity(tree, scan), [tree, scan]);
@@ -94,13 +100,16 @@ export function InsightsPanel() {
               >
                 {paddedActivity.map((d, i) =>
                   d ? (
-                    <div
+                    <button
                       key={d.date}
+                      onClick={() => setSelectedDay((cur) => (cur === d.date ? null : d.date))}
                       title={`${d.date}: ${d.count} note${d.count === 1 ? "" : "s"}`}
                       className="h-[10px] w-[10px] rounded-sm"
                       style={{
                         background: d.count === 0 ? "var(--bg-hover)" : "var(--accent)",
                         opacity: d.count === 0 ? 1 : activityOpacity(d.count),
+                        outline: selectedDay === d.date ? "1.5px solid var(--text)" : "none",
+                        outlineOffset: 1,
                       }}
                     />
                   ) : (
@@ -111,6 +120,49 @@ export function InsightsPanel() {
             ) : (
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Not enough data yet — write a few notes to see your activity here.
+              </div>
+            )}
+
+            {daySummary && (
+              <div className="mt-2 rounded border p-2" style={{ borderColor: "var(--border)" }}>
+                <div className="mb-1 flex items-center justify-between text-xs">
+                  <span className="font-medium" style={{ color: "var(--text)" }}>
+                    {daySummary.date}
+                  </span>
+                  <button onClick={() => setSelectedDay(null)} style={{ color: "var(--text-muted)" }}>
+                    Close
+                  </button>
+                </div>
+                {daySummary.notes.length === 0 ? (
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    No notes written this day.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {daySummary.notes.map((n) => (
+                      <button
+                        key={n.path}
+                        onClick={() => handleOpenPage(n.path)}
+                        className="flex items-center justify-between gap-2 truncate rounded px-1 py-0.5 text-left text-xs hover:underline"
+                        style={{ color: "var(--text)" }}
+                      >
+                        <span className="truncate">
+                          {n.name}
+                          {n.created && (
+                            <span className="ml-1 italic" style={{ color: "var(--text-muted)" }}>
+                              new
+                            </span>
+                          )}
+                        </span>
+                        {n.tags.length > 0 && (
+                          <span className="shrink-0 truncate" style={{ color: "var(--text-muted)" }}>
+                            {n.tags.map((t) => `#${t}`).join(" ")}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </section>

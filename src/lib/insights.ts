@@ -132,6 +132,51 @@ export function computeTagCounts(scan: VaultScanResult | null): TagCount[] {
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
 }
 
+export interface DaySummaryNote {
+  name: string;
+  path: string;
+  tags: string[];
+  /** True if the note was also created on this day (not just edited). */
+  created: boolean;
+}
+
+export interface DaySummary {
+  date: string;
+  notes: DaySummaryNote[];
+}
+
+/**
+ * What was written about on a given day: every note last-saved that day,
+ * with its tags. Same last-save-only caveat as computeActivityCalendar — a
+ * note only carries one `updatedAt`, so an older note edited again later
+ * moves entirely to the newer day.
+ */
+export function computeDaySummary(tree: TreeEntry[], scan: VaultScanResult | null, date: string): DaySummary {
+  if (!scan) return { date, notes: [] };
+  const notes: DaySummaryNote[] = [];
+  for (const p of flattenPages(tree)) {
+    const meta = scan.metaByPath.get(p.path);
+    if (!meta || meta.updatedAt.slice(0, 10) !== date) continue;
+    notes.push({ name: p.name, path: p.path, tags: meta.tags, created: meta.createdAt.slice(0, 10) === date });
+  }
+  notes.sort((a, b) => a.name.localeCompare(b.name));
+  return { date, notes };
+}
+
+export const DAILY_SUMMARY_HEADING = "## 📝 Topics touched today";
+
+/** Formats a day's summary as a markdown section (wiki-linked, so the entries are clickable in the note), or "" if there's nothing to say. */
+export function formatDaySummaryMarkdown(summary: DaySummary): string {
+  if (summary.notes.length === 0) return "";
+  const lines = [DAILY_SUMMARY_HEADING, ""];
+  for (const n of summary.notes) {
+    const newPart = n.created ? " *(new)*" : "";
+    const tagsPart = n.tags.length ? ` — ${n.tags.map((t) => `#${t}`).join(" ")}` : "";
+    lines.push(`- [[${n.name}]]${newPart}${tagsPart}`);
+  }
+  return lines.join("\n");
+}
+
 export interface RecapSummary {
   topTag: string | null;
   notesThisWeek: number;

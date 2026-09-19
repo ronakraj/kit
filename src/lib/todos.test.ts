@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { sortActiveTodos, isOverdue, isDueToday, markDone, reopenItem, createTodoItem, type TodoItem } from "./todos";
+import {
+  sortActiveTodos,
+  isOverdue,
+  isDueToday,
+  markDone,
+  reopenItem,
+  createTodoItem,
+  summarizeTodos,
+  type TodoItem,
+} from "./todos";
 
 function item(overrides: Partial<TodoItem> = {}): TodoItem {
   return {
@@ -115,5 +124,46 @@ describe("createTodoItem", () => {
 
   it("falls back to a placeholder title when blank", () => {
     expect(createTodoItem("   ", "2026-01-01T00:00:00.000Z").title).toBe("Untitled");
+  });
+});
+
+describe("summarizeTodos", () => {
+  it("counts only active (non-archived) items", () => {
+    const items = [item({ archived: false }), item({ archived: true }), item({ archived: false })];
+    expect(summarizeTodos(items).totalActive).toBe(2);
+  });
+
+  it("buckets active items by status", () => {
+    const items = [
+      item({ status: "todo" }),
+      item({ status: "todo" }),
+      item({ status: "in-progress" }),
+      item({ status: "blocked" }),
+    ];
+    const summary = summarizeTodos(items);
+    expect(summary.byStatus).toEqual({ todo: 2, "in-progress": 1, blocked: 1, done: 0 });
+  });
+
+  it("counts high-priority active items", () => {
+    const items = [item({ priority: "high" }), item({ priority: "high" }), item({ priority: "low" })];
+    expect(summarizeTodos(items).highPriority).toBe(2);
+  });
+
+  it("counts overdue active items relative to the given today", () => {
+    const items = [
+      item({ deadline: "2026-01-01" }), // overdue
+      item({ deadline: "2026-01-10" }), // not yet
+      item({ deadline: "2026-01-05", status: "done", archived: true }), // archived, excluded entirely
+    ];
+    expect(summarizeTodos(items, "2026-01-05").overdue).toBe(1);
+  });
+
+  it("returns all zeros for an empty list", () => {
+    expect(summarizeTodos([])).toEqual({
+      totalActive: 0,
+      byStatus: { todo: 0, "in-progress": 0, blocked: 0, done: 0 },
+      highPriority: 0,
+      overdue: 0,
+    });
   });
 });

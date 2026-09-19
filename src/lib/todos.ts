@@ -82,6 +82,31 @@ export function isDueToday(item: TodoItem, today: string = todayISO()): boolean 
   return item.deadline === today;
 }
 
+export interface TodoSummary {
+  totalActive: number;
+  byStatus: Record<TodoStatus, number>;
+  highPriority: number;
+  overdue: number;
+}
+
+/** A compact snapshot of the active (non-archived) todo list, for a sidebar/status-bar badge. */
+export function summarizeTodos(items: TodoItem[], today: string = todayISO()): TodoSummary {
+  const byStatus: Record<TodoStatus, number> = { todo: 0, "in-progress": 0, blocked: 0, done: 0 };
+  let highPriority = 0;
+  let overdue = 0;
+  let totalActive = 0;
+
+  for (const item of items) {
+    if (item.archived) continue;
+    totalActive++;
+    byStatus[item.status]++;
+    if (item.priority === "high") highPriority++;
+    if (isOverdue(item, today)) overdue++;
+  }
+
+  return { totalActive, byStatus, highPriority, overdue };
+}
+
 export function markDone(item: TodoItem, now: string): TodoItem {
   return { ...item, status: "done", archived: true, completedAt: now, updatedAt: now };
 }

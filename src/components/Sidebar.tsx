@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAppStore } from "../state/store";
 import { flattenPages, type PageRef } from "../lib/vault";
+import { summarizeTodos } from "../lib/todos";
 import { TreeList } from "./FolderTree";
 
 export function Sidebar() {
@@ -12,6 +13,7 @@ export function Sidebar() {
   const currentNote = useAppStore((s) => s.currentNote);
   const todosViewOpen = useAppStore((s) => s.todosViewOpen);
   const openTodos = useAppStore((s) => s.openTodos);
+  const todos = useAppStore((s) => s.todos);
   const trashViewOpen = useAppStore((s) => s.trashViewOpen);
   const openTrash = useAppStore((s) => s.openTrash);
   const openToday = useAppStore((s) => s.openToday);
@@ -50,6 +52,7 @@ export function Sidebar() {
   }, [selectedTag, scan, tree]);
 
   const allTags = useMemo(() => (scan ? Array.from(scan.allTags).sort() : []), [scan]);
+  const todoSummary = useMemo(() => (todos ? summarizeTodos(todos) : null), [todos]);
 
   return (
     <div className="flex h-full w-64 flex-col border-r" style={{ borderColor: "var(--border)", background: "var(--bg-panel)" }}>
@@ -79,14 +82,25 @@ export function Sidebar() {
 
       <button
         onClick={() => void openTodos()}
-        className="border-b px-3 py-2 text-left text-sm font-medium"
+        className="flex w-full flex-col gap-0.5 border-b px-3 py-2 text-left text-sm font-medium"
         style={{
           borderColor: "var(--border)",
           background: todosViewOpen ? "var(--bg-hover)" : "transparent",
           color: "var(--text)",
         }}
       >
-        ✓ Todos
+        <span>✓ Todos</span>
+        {todoSummary && todoSummary.totalActive > 0 && (
+          <span className="text-xs font-normal" style={{ color: "var(--text-muted)" }}>
+            {todoSummary.totalActive} open
+            {todoSummary.byStatus["in-progress"] > 0 && ` · ${todoSummary.byStatus["in-progress"]} in progress`}
+            {todoSummary.byStatus.blocked > 0 && ` · ${todoSummary.byStatus.blocked} blocked`}
+            {todoSummary.highPriority > 0 && ` · ${todoSummary.highPriority} high`}
+            {todoSummary.overdue > 0 && (
+              <span style={{ color: "#e0575f" }}> · {todoSummary.overdue} overdue</span>
+            )}
+          </span>
+        )}
       </button>
 
       <div className="flex-1 overflow-y-auto py-1">
