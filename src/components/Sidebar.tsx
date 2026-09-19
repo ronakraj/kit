@@ -10,6 +10,8 @@ export function Sidebar() {
   const createFolder = useAppStore((s) => s.createFolder);
   const openPath = useAppStore((s) => s.openPath);
   const currentNote = useAppStore((s) => s.currentNote);
+  const todosViewOpen = useAppStore((s) => s.todosViewOpen);
+  const openTodos = useAppStore((s) => s.openTodos);
   const openToday = useAppStore((s) => s.openToday);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
@@ -72,6 +74,18 @@ export function Sidebar() {
           </button>
         </div>
       </div>
+
+      <button
+        onClick={() => void openTodos()}
+        className="border-b px-3 py-2 text-left text-sm font-medium"
+        style={{
+          borderColor: "var(--border)",
+          background: todosViewOpen ? "var(--bg-hover)" : "transparent",
+          color: "var(--text)",
+        }}
+      >
+        ✓ Todos
+      </button>
 
       <div className="flex-1 overflow-y-auto py-1">
         {searchResults ? (

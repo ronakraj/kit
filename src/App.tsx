@@ -3,6 +3,8 @@ import { useAppStore } from "./state/store";
 import { VaultPicker } from "./components/VaultPicker";
 import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/Editor";
+import { TodoListView } from "./components/TodoListView";
+import { TodoDetailView } from "./components/TodoDetailView";
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { PromptDialog } from "./components/PromptDialog";
 import { DeskBuddy } from "./components/DeskBuddy";
@@ -12,6 +14,15 @@ import { InsightsToggle } from "./components/InsightsToggle";
 import { BlockHistoryToggle } from "./components/BlockHistoryToggle";
 import { NoteHistoryPanel } from "./components/NoteHistoryPanel";
 import { NoteHistoryToggle } from "./components/NoteHistoryToggle";
+
+function MainPane() {
+  const todosViewOpen = useAppStore((s) => s.todosViewOpen);
+  const currentTodoId = useAppStore((s) => s.currentTodoId);
+  if (todosViewOpen) {
+    return currentTodoId ? <TodoDetailView /> : <TodoListView />;
+  }
+  return <Editor />;
+}
 
 function App() {
   const vaultPath = useAppStore((s) => s.vaultPath);
@@ -34,7 +45,7 @@ function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "var(--bg)" }}>
       {!sidebarHidden && <Sidebar />}
-      <Editor />
+      <MainPane />
       <QuickSwitcher />
       <PromptDialog />
       <DeskBuddy />

@@ -2,6 +2,8 @@ import { create } from "zustand";
 import * as vault from "../lib/vault";
 import { scanVault, type VaultScanResult } from "../lib/vaultScan";
 import { getBacklinksFor } from "../lib/backlinks";
+import * as todosLib from "../lib/todos";
+import { markDone as markTodoDone, reopenItem as reopenTodoItem, type TodoItem } from "../lib/todos";
 import type { NoteRecord, TreeEntry } from "../lib/types";
 
 const EMPTY_BACKLINKS: { name: string; path: string }[] = [];
@@ -14,6 +16,9 @@ interface AppState {
   tree: TreeEntry[];
   scan: VaultScanResult | null;
   currentNote: NoteRecord | null;
+  todosViewOpen: boolean;
+  todos: TodoItem[] | null;
+  currentTodoId: string | null;
   noteLoading: boolean;
   selectedTag: string | null;
   searchQuery: string;
@@ -57,6 +62,17 @@ interface AppState {
   toggleBlockHistory: () => void;
   requestRestore: (path: string, markdown: string) => void;
   clearRestoreRequest: () => void;
+
+  openTodos: () => Promise<void>;
+  closeTodos: () => void;
+  openTodoDetail: (id: string) => void;
+  closeTodoDetail: () => void;
+  addTodoItem: (title: string) => Promise<void>;
+  updateTodoItem: (id: string, patch: Partial<Pick<TodoItem, "title" | "status" | "priority" | "deadline">>) => Promise<void>;
+  saveTodoNotes: (id: string, notesMarkdown: string) => Promise<void>;
+  markTodoItemDone: (id: string) => Promise<void>;
+  reopenTodoItem: (id: string) => Promise<void>;
+  deleteTodoItem: (id: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -65,6 +81,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   tree: [],
   scan: null,
   currentNote: null,
+  todosViewOpen: false,
+  todos: null,
+  currentTodoId: null,
   noteLoading: false,
   selectedTag: null,
   searchQuery: "",
@@ -121,7 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await vault.ensureVaultScaffold(picked);
       await vault.saveVaultPath(picked);
-      set({ vaultPath: picked, currentNote: null });
+      set({ vaultPath: picked, currentNote: null, todosViewOpen: false });
       await get().refresh();
     } catch (e) {
       set({ error: String(e) });
@@ -149,7 +168,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ noteLoading: true });
     try {
       const note = await vault.readNote(vaultPath, path);
-      set({ currentNote: note });
+      set({ currentNote: note, todosViewOpen: false });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -167,7 +186,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const note = await vault.createNote(vaultPath, "", title);
     await get().refresh();
-    set({ currentNote: note });
+    set({ currentNote: note, todosViewOpen: false });
   },
 
   createNote: async (folderPath: string, title: string) => {
@@ -175,7 +194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!vaultPath) return;
     const note = await vault.createNote(vaultPath, folderPath, title);
     await get().refresh();
-    set({ currentNote: note });
+    set({ currentNote: note, todosViewOpen: false });
   },
 
   createFolder: async (parentPath: string, name: string) => {
@@ -244,6 +263,75 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleBlockHistory: () => set((s) => ({ showBlockHistory: !s.showBlockHistory })),
   requestRestore: (path, markdown) => set({ restoreRequest: { path, markdown } }),
   clearRestoreRequest: () => set({ restoreRequest: null }),
+
+  openTodos: async () => {
+    const { vaultPath } = get();
+    if (!vaultPath) return;
+    set({ currentNote: null, todosViewOpen: true, currentTodoId: null });
+    try {
+      const store = await todosLib.readTodoStore(vaultPath);
+      set({ todos: store.items });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  closeTodos: () => set({ todosViewOpen: false, currentTodoId: null }),
+  openTodoDetail: (id) => set({ currentTodoId: id }),
+  closeTodoDetail: () => set({ currentTodoId: null }),
+
+  addTodoItem: async (title: string) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const item = todosLib.createTodoItem(title, new Date().toISOString());
+    const next = [...todos, item];
+    set({ todos: next });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
+
+  updateTodoItem: async (id, patch) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const now = new Date().toISOString();
+    const next = todos.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: now } : t));
+    set({ todos: next });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
+
+  saveTodoNotes: async (id, notesMarkdown) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const now = new Date().toISOString();
+    const next = todos.map((t) => (t.id === id ? { ...t, notesMarkdown, updatedAt: now } : t));
+    set({ todos: next });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
+
+  markTodoItemDone: async (id) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const now = new Date().toISOString();
+    const next = todos.map((t) => (t.id === id ? markTodoDone(t, now) : t));
+    set({ todos: next, currentTodoId: null });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
+
+  reopenTodoItem: async (id) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const now = new Date().toISOString();
+    const next = todos.map((t) => (t.id === id ? reopenTodoItem(t, now) : t));
+    set({ todos: next });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
+
+  deleteTodoItem: async (id) => {
+    const { vaultPath, todos } = get();
+    if (!vaultPath || !todos) return;
+    const next = todos.filter((t) => t.id !== id);
+    set({ todos: next, currentTodoId: null });
+    await todosLib.writeTodoStore(vaultPath, { items: next });
+  },
 }));
 
 export function useBacklinksForCurrentNote() {
