@@ -121,8 +121,8 @@ function BoundTodoDetail({ item }: { item: TodoItem }) {
             <select
               value={item.status}
               onChange={(e) => void updateTodoItem(item.id, { status: e.target.value as TodoStatus })}
-              className="rounded border bg-transparent px-1 py-0.5"
-              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+              className="rounded border px-1 py-0.5"
+              style={{ borderColor: "var(--border)", color: "var(--text)", background: "var(--bg-panel)" }}
             >
               {STATUS_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -137,8 +137,8 @@ function BoundTodoDetail({ item }: { item: TodoItem }) {
             <select
               value={item.priority}
               onChange={(e) => void updateTodoItem(item.id, { priority: e.target.value as TodoPriority })}
-              className="rounded border bg-transparent px-1 py-0.5"
-              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+              className="rounded border px-1 py-0.5"
+              style={{ borderColor: "var(--border)", color: "var(--text)", background: "var(--bg-panel)" }}
             >
               {PRIORITY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -154,8 +154,8 @@ function BoundTodoDetail({ item }: { item: TodoItem }) {
               type="date"
               value={item.deadline ?? ""}
               onChange={(e) => void updateTodoItem(item.id, { deadline: e.target.value || null })}
-              className="rounded border bg-transparent px-1 py-0.5"
-              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+              className="rounded border px-1 py-0.5"
+              style={{ borderColor: "var(--border)", color: "var(--text)", background: "var(--bg-panel)" }}
             />
           </label>
 

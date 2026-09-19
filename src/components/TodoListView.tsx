@@ -107,8 +107,8 @@ function TodoRow({
       <select
         value={item.status}
         onChange={(e) => onStatusChange(e.target.value as TodoStatus)}
-        className="shrink-0 rounded border bg-transparent px-1 py-0.5 text-xs"
-        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+        className="shrink-0 rounded border px-1 py-0.5 text-xs"
+        style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--bg-panel)" }}
       >
         {(Object.keys(STATUS_LABEL) as TodoStatus[]).map((s) => (
           <option key={s} value={s}>

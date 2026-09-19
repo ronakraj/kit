@@ -37,26 +37,32 @@
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Cool, neutral "ink and steel" palette — deliberately not warm/cream, so
-     the desk buddy's fur is the only warm color anywhere in the app. */
-  --bg: #eef0f3;
-  --bg-panel: #ffffff;
-  --bg-hover: #e3e7eb;
-  --border: #dbe0e5;
-  --text: #1c2430;
-  --text-muted: #67717d;
-  --accent: #35577a;
+  /* Warm parchment, grounded in the desk buddy's own fur/cream colors —
+     but paired with a moss-green accent rather than orange/terracotta, so
+     the fox's fur stays the one exclusively warm color in the app instead
+     of the whole UI reaching for the same note. */
+  --bg: #f4f0e6;
+  --bg-panel: #fffcf5;
+  --bg-hover: #ece4d0;
+  --border: #e0d7c0;
+  --text: #2b2620;
+  --text-muted: #8a8071;
+  --accent: #4f6a52;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14181d;
-    --bg-panel: #1c2128;
-    --bg-hover: #262c34;
-    --border: #2e353d;
-    --text: #e7eaed;
-    --text-muted: #8b95a1;
-    --accent: #7fa8cc;
+    /* Warm espresso dark mode, not cool graphite — kept dark without going
+       to near-black, which read as harsh. */
+    --bg: #221e18;
+    --bg-panel: #2b2620;
+    --bg-hover: #373126;
+    --border: #4a4233;
+    --text: #f0ead9;
+    --text-muted: #a89b83;
+    --accent: #8bab84;
+    color-scheme: dark;
   }
 }
 
