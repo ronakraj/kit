@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../state/store";
-import { flattenPages } from "../lib/vault";
-import { fuzzySearch } from "../lib/search";
+import { flattenPages, readNote } from "../lib/vault";
+import { stripMarkdownNoise } from "../lib/blockHistory";
+import { searchNotes, type SearchableNote } from "../lib/search";
 
 export function QuickSwitcher() {
   const open = useAppStore((s) => s.quickSwitcherOpen);
   const setOpen = useAppStore((s) => s.setQuickSwitcherOpen);
   const tree = useAppStore((s) => s.tree);
+  const vaultPath = useAppStore((s) => s.vaultPath);
   const openPath = useAppStore((s) => s.openPath);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [bodies, setBodies] = useState<Map<string, string>>(new Map());
+  const [contentLoading, setContentLoading] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -35,7 +39,47 @@ export function QuickSwitcher() {
   }, [open]);
 
   const allPages = useMemo(() => flattenPages(tree), [tree]);
-  const results = useMemo(() => fuzzySearch(query, allPages, (n) => n.name).slice(0, 30), [query, allPages]);
+
+  // Loads every note's body fresh each time the switcher opens, so content
+  // search reflects on-disk edits made outside this session too. Title
+  // search (via allPages above) works instantly without waiting on this.
+  useEffect(() => {
+    if (!open || !vaultPath) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- kicks off the "still searching…" indicator for this fresh load.
+    setContentLoading(true);
+    void Promise.all(
+      allPages.map(async (p) => {
+        try {
+          const note = await readNote(vaultPath, p.path);
+          return [p.path, stripMarkdownNoise(note.body)] as const;
+        } catch {
+          return [p.path, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setBodies(new Map(entries));
+      setContentLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, vaultPath]);
+
+  const searchableNotes = useMemo<SearchableNote[]>(
+    () => allPages.map((p) => ({ path: p.path, name: p.name, body: bodies.get(p.path) ?? "" })),
+    [allPages, bodies]
+  );
+  const results = useMemo(() => {
+    if (!query.trim()) {
+      return allPages
+        .slice(0, 30)
+        .map((p) => ({ path: p.path, name: p.name, snippet: null, snippetHighlightStart: 0, snippetHighlightEnd: 0 }));
+    }
+    return searchNotes(query, searchableNotes).slice(0, 30);
+  }, [query, searchableNotes, allPages]);
 
   if (!open) return null;
 
@@ -51,7 +95,7 @@ export function QuickSwitcher() {
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-md rounded-lg border shadow-xl"
+        className="w-full max-w-xl rounded-lg border shadow-xl"
         style={{ background: "var(--bg-panel)", borderColor: "var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -73,24 +117,38 @@ export function QuickSwitcher() {
               choose(results[activeIndex].path);
             }
           }}
-          placeholder="Jump to note…"
+          placeholder="Search notes — titles and content…"
           className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none"
           style={{ borderColor: "var(--border)", color: "var(--text)" }}
         />
-        <div className="max-h-80 overflow-y-auto py-1">
+        <div className="max-h-96 overflow-y-auto py-1">
           {results.map((n, i) => (
             <div
               key={n.path}
               onClick={() => choose(n.path)}
-              className="cursor-pointer truncate px-4 py-1.5 text-sm"
+              className="cursor-pointer px-4 py-2 text-sm"
               style={{ background: i === activeIndex ? "var(--bg-hover)" : "transparent", color: "var(--text)" }}
             >
-              {n.name}
+              <div className="truncate">{n.name}</div>
+              {n.snippet && (
+                <div className="mt-0.5 truncate text-xs" style={{ color: "var(--text-muted)" }}>
+                  {n.snippet.slice(0, n.snippetHighlightStart)}
+                  <span style={{ color: "var(--accent)", fontWeight: 600 }}>
+                    {n.snippet.slice(n.snippetHighlightStart, n.snippetHighlightEnd)}
+                  </span>
+                  {n.snippet.slice(n.snippetHighlightEnd)}
+                </div>
+              )}
             </div>
           ))}
-          {query && results.length === 0 && (
+          {query && results.length === 0 && !contentLoading && (
             <div className="px-4 py-2 text-sm" style={{ color: "var(--text-muted)" }}>
               No matches
+            </div>
+          )}
+          {query && contentLoading && (
+            <div className="px-4 py-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              Still searching note content…
             </div>
           )}
         </div>

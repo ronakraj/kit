@@ -1,5 +1,5 @@
 import { findNoteByTitle, readNote } from "./vault";
-import { stripBlockMarkers } from "./blockHistory";
+import { stripMarkdownNoise } from "./blockHistory";
 import type { TreeEntry } from "./types";
 
 const PREVIEW_LENGTH = 220;
@@ -9,14 +9,9 @@ export interface NotePreview {
   snippet: string;
 }
 
-/** Strips markdown noise (block markers, fenced blocks, heading/emphasis marks) down to plain text, truncated to a short snippet. */
+/** Cleans and truncates a note body down to a short preview snippet. */
 export function cleanPreviewText(rawBody: string): string {
-  const cleaned = stripBlockMarkers(rawBody)
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/^#+\s*/gm, "")
-    .replace(/[*_`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const cleaned = stripMarkdownNoise(rawBody);
   if (!cleaned) return "(empty note)";
   return cleaned.length > PREVIEW_LENGTH ? `${cleaned.slice(0, PREVIEW_LENGTH).trim()}…` : cleaned;
 }

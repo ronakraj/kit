@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fuzzyScore, fuzzySearch } from "./search";
+import { fuzzyScore, fuzzySearch, searchNotes } from "./search";
 
 describe("fuzzyScore", () => {
   it("returns 0 for an empty query against anything", () => {
@@ -72,5 +72,56 @@ describe("fuzzySearch", () => {
   it("uses the provided text accessor rather than assuming string items", () => {
     const objs = [{ title: "Alpha" }, { title: "Beta" }, { title: "Gamma" }];
     expect(fuzzySearch("gam", objs, (o) => o.title)).toEqual([{ title: "Gamma" }]);
+  });
+});
+
+describe("searchNotes", () => {
+  const notes = [
+    { path: "a.md", name: "Neural Networks", body: "Background reading on the sigmoid activation function and backpropagation." },
+    { path: "b.md", name: "Getting Started", body: "Organize notes with folders and tags." },
+    { path: "c.md", name: "Sigmoid", body: "" },
+  ];
+
+  it("returns an empty array for an empty/whitespace query", () => {
+    expect(searchNotes("   ", notes)).toEqual([]);
+    expect(searchNotes("", notes)).toEqual([]);
+  });
+
+  it("matches on note title even with no content match", () => {
+    const results = searchNotes("Getting", notes);
+    expect(results.map((r) => r.path)).toContain("b.md");
+  });
+
+  it("matches on body content and includes a snippet", () => {
+    const results = searchNotes("backpropagation", notes);
+    expect(results).toHaveLength(1);
+    expect(results[0].path).toBe("a.md");
+    expect(results[0].snippet).toContain("backpropagation");
+  });
+
+  it("ranks a title match above a content-only match for the same term", () => {
+    // "Sigmoid" is the c.md title, but also appears in a.md's body.
+    const results = searchNotes("sigmoid", notes);
+    expect(results[0].path).toBe("c.md");
+  });
+
+  it("highlights the correct span within the snippet", () => {
+    const results = searchNotes("sigmoid", notes);
+    const bodyMatch = results.find((r) => r.path === "a.md")!;
+    const { snippet, snippetHighlightStart, snippetHighlightEnd } = bodyMatch;
+    expect(snippet!.slice(snippetHighlightStart, snippetHighlightEnd).toLowerCase()).toBe("sigmoid");
+  });
+
+  it("is case-insensitive for content matches", () => {
+    const results = searchNotes("SIGMOID", notes);
+    expect(results.some((r) => r.path === "a.md")).toBe(true);
+  });
+
+  it("truncates a long body to a snippet around the match, with ellipses", () => {
+    const longBody = `${"x".repeat(200)} needle ${"y".repeat(200)}`;
+    const results = searchNotes("needle", [{ path: "d.md", name: "Long", body: longBody }]);
+    expect(results[0].snippet!.length).toBeLessThan(longBody.length);
+    expect(results[0].snippet!.startsWith("…")).toBe(true);
+    expect(results[0].snippet!.endsWith("…")).toBe(true);
   });
 });

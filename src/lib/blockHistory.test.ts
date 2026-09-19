@@ -3,6 +3,7 @@ import {
   encodeBlockMarker,
   splitMarkedMarkdown,
   stripBlockMarkers,
+  stripMarkdownNoise,
   diffBlocks,
   appendSnapshot,
   emptyHistory,
@@ -68,6 +69,26 @@ describe("stripBlockMarkers", () => {
   it("returns an empty string for markdown that is only markers", () => {
     const md = [`${encodeBlockMarker("a")}`, `${encodeBlockMarker("b")}`].join("\n");
     expect(stripBlockMarkers(md)).toBe("");
+  });
+});
+
+describe("stripMarkdownNoise", () => {
+  it("strips markers, code fences, heading hashes, and emphasis marks down to flat text", () => {
+    const md = [
+      `${encodeBlockMarker("a")}`,
+      "# Sigmoid",
+      "",
+      "A **squashing** function.",
+      "",
+      "```math",
+      "x",
+      "```",
+    ].join("\n");
+    expect(stripMarkdownNoise(md)).toBe("Sigmoid A squashing function.");
+  });
+
+  it("returns an empty string for markdown that has nothing left after cleaning", () => {
+    expect(stripMarkdownNoise("   \n\n  ")).toBe("");
   });
 });
 

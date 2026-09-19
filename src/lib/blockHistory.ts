@@ -61,6 +61,16 @@ export function stripBlockMarkers(raw: string): string {
     .trim();
 }
 
+/** Strips markdown noise (block markers, fenced code/math/plot blocks, heading hashes, emphasis marks) down to flat plain text, for previews and search indexing. Does not truncate. */
+export function stripMarkdownNoise(raw: string): string {
+  return stripBlockMarkers(raw)
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/[*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Cheap, non-cryptographic string fingerprint (djb2) used only to detect whether a block's content changed between saves. */
 function hashContent(s: string): string {
   let h = 5381;
