@@ -33,7 +33,7 @@ import {
   writeNoteHistory,
   type NoteHistory,
 } from "../lib/blockHistory";
-import { getAuthorId } from "../lib/vault";
+import { getAuthorId, createNote as createNoteFile, findNoteByTitle } from "../lib/vault";
 import { extractPasteSourceUrl } from "../lib/pasteSource";
 import { TagChips } from "./TagChips";
 import { BacklinksPanel } from "./BacklinksPanel";
@@ -121,11 +121,13 @@ function buildMarkdownWithHistory(editor: {
   return { markdown: chunks.join("\n\n"), entries };
 }
 
-/** Provides the "research selected term" trigger down to the custom formatting toolbar button. */
+/** Provides the "research selected term" and "extract to linked note" triggers down to the custom formatting toolbar buttons. */
 const ResearchTriggerContext = createContext<(() => void) | null>(null);
+const ExtractTriggerContext = createContext<(() => void) | null>(null);
 
 function CustomFormattingToolbar() {
   const triggerResearch = useContext(ResearchTriggerContext);
+  const triggerExtract = useContext(ExtractTriggerContext);
   const components = useComponentsContext();
   const ToolbarButton = components?.FormattingToolbar.Button;
   return (
@@ -134,6 +136,14 @@ function CustomFormattingToolbar() {
       {ToolbarButton && (
         <ToolbarButton mainTooltip="Research this term with AI" onClick={() => triggerResearch?.()}>
           ✨ Research
+        </ToolbarButton>
+      )}
+      {ToolbarButton && (
+        <ToolbarButton
+          mainTooltip="Branch this selection out into its own linked note"
+          onClick={() => triggerExtract?.()}
+        >
+          🔗 New linked note
         </ToolbarButton>
       )}
     </FormattingToolbar>
@@ -163,6 +173,8 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   const renameCurrentNote = useAppStore((s) => s.renameCurrentNote);
   const deleteNote = useAppStore((s) => s.deleteNote);
   const navigateToNoteTitle = useAppStore((s) => s.navigateToNoteTitle);
+  const tree = useAppStore((s) => s.tree);
+  const refresh = useAppStore((s) => s.refresh);
   const beginResearch = useAppStore((s) => s.beginResearch);
   const endResearch = useAppStore((s) => s.endResearch);
   const showBlockHistory = useAppStore((s) => s.showBlockHistory);
@@ -400,6 +412,26 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     }
   };
 
+  // Branches the current selection out into its own note (creating it if a
+  // note with that title doesn't already exist yet — so extracting the same
+  // term from a later article links back to the same accumulating note
+  // rather than creating a duplicate), then replaces the selection in this
+  // note with a `[[wiki-link]]` to it. Deliberately doesn't navigate away or
+  // pre-fill any content — stays on the article you're reading, leaves the
+  // new note blank for you to research and flesh out later.
+  const triggerExtract = async () => {
+    const term = editor.getSelectedText().trim();
+    if (!term) return;
+
+    const existing = findNoteByTitle(tree, term);
+    if (!existing) {
+      await createNoteFile(vaultPath, "", term);
+      await refresh();
+    }
+
+    editor.insertInlineContent([{ type: "text", text: `[[${term}]]`, styles: {} }]);
+  };
+
   // When pasted content carries a source URL — the "CF_HTML" clipboard format
   // some browsers (notably on Windows) attach a `SourceURL:` header to when
   // you copy from a web page — drop a small citation line after it, similar
@@ -548,25 +580,27 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
             </div>
           ))}
           <ResearchTriggerContext.Provider value={triggerResearch}>
-            <BlockNoteView
-              editor={editor}
-              theme={{ light: lightDefaultTheme, dark: darkDefaultTheme }}
-              formattingToolbar={false}
-              slashMenu={false}
-            >
-              <FormattingToolbarController formattingToolbar={CustomFormattingToolbar} />
-              <SuggestionMenuController
-                triggerCharacter="/"
-                getItems={async (query) =>
-                  filterSuggestionItems(
-                    // `editorSchema` is a superset of the math-only schema `getMathSlashMenuItems` was
-                    // typed against; the cast is safe since it only reads/calls the shared block specs.
-                    getMathSlashMenuItems(editor as unknown as MathEditor, getDefaultReactSlashMenuItems(editor)),
-                    query
-                  )
-                }
-              />
-            </BlockNoteView>
+            <ExtractTriggerContext.Provider value={triggerExtract}>
+              <BlockNoteView
+                editor={editor}
+                theme={{ light: lightDefaultTheme, dark: darkDefaultTheme }}
+                formattingToolbar={false}
+                slashMenu={false}
+              >
+                <FormattingToolbarController formattingToolbar={CustomFormattingToolbar} />
+                <SuggestionMenuController
+                  triggerCharacter="/"
+                  getItems={async (query) =>
+                    filterSuggestionItems(
+                      // `editorSchema` is a superset of the math-only schema `getMathSlashMenuItems` was
+                      // typed against; the cast is safe since it only reads/calls the shared block specs.
+                      getMathSlashMenuItems(editor as unknown as MathEditor, getDefaultReactSlashMenuItems(editor)),
+                      query
+                    )
+                  }
+                />
+              </BlockNoteView>
+            </ExtractTriggerContext.Provider>
           </ResearchTriggerContext.Provider>
         </div>
 
