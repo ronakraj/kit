@@ -4,6 +4,8 @@ import { scanVault, type VaultScanResult } from "../lib/vaultScan";
 import { getBacklinksFor } from "../lib/backlinks";
 import * as todosLib from "../lib/todos";
 import { markDone as markTodoDone, reopenItem as reopenTodoItem, type TodoItem } from "../lib/todos";
+import * as trashLib from "../lib/trash";
+import type { TrashEntry } from "../lib/trash";
 import type { NoteRecord, TreeEntry } from "../lib/types";
 
 const EMPTY_BACKLINKS: { name: string; path: string }[] = [];
@@ -19,6 +21,8 @@ interface AppState {
   todosViewOpen: boolean;
   todos: TodoItem[] | null;
   currentTodoId: string | null;
+  trashViewOpen: boolean;
+  trashEntries: TrashEntry[] | null;
   noteLoading: boolean;
   selectedTag: string | null;
   searchQuery: string;
@@ -52,6 +56,12 @@ interface AppState {
   renameCurrentNote: (newTitle: string) => Promise<void>;
   deleteNote: (path: string) => Promise<void>;
   openToday: () => Promise<void>;
+  openTrash: () => Promise<void>;
+  closeTrash: () => void;
+  restoreTrashEntry: (id: string) => Promise<void>;
+  permanentlyDeleteTrashEntry: (id: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+  undoLastDelete: () => Promise<boolean>;
   setTagOnCurrentNote: (tag: string, add: boolean) => Promise<void>;
   setSelectedTag: (tag: string | null) => void;
   setSearchQuery: (q: string) => void;
@@ -84,6 +94,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   todosViewOpen: false,
   todos: null,
   currentTodoId: null,
+  trashViewOpen: false,
+  trashEntries: null,
   noteLoading: false,
   selectedTag: null,
   searchQuery: "",
@@ -140,7 +152,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await vault.ensureVaultScaffold(picked);
       await vault.saveVaultPath(picked);
-      set({ vaultPath: picked, currentNote: null, todosViewOpen: false });
+      set({ vaultPath: picked, currentNote: null, todosViewOpen: false, trashViewOpen: false });
       await get().refresh();
     } catch (e) {
       set({ error: String(e) });
@@ -168,7 +180,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ noteLoading: true });
     try {
       const note = await vault.readNote(vaultPath, path);
-      set({ currentNote: note, todosViewOpen: false });
+      set({ currentNote: note, todosViewOpen: false, trashViewOpen: false });
     } catch (e) {
       set({ error: String(e) });
     } finally {
@@ -186,7 +198,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const note = await vault.createNote(vaultPath, "", title);
     await get().refresh();
-    set({ currentNote: note, todosViewOpen: false });
+    set({ currentNote: note, todosViewOpen: false, trashViewOpen: false });
   },
 
   createNote: async (folderPath: string, title: string) => {
@@ -194,7 +206,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!vaultPath) return;
     const note = await vault.createNote(vaultPath, folderPath, title);
     await get().refresh();
-    set({ currentNote: note, todosViewOpen: false });
+    set({ currentNote: note, todosViewOpen: false, trashViewOpen: false });
   },
 
   createFolder: async (parentPath: string, name: string) => {
@@ -224,10 +236,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refresh();
   },
 
+  // Moves the note to the vault's trash rather than deleting it outright, so
+  // it can be recovered later via the trash view or a global Ctrl/Cmd+Z.
   deleteNote: async (path: string) => {
     const { vaultPath, currentNote } = get();
     if (!vaultPath) return;
-    await vault.deleteNote(vaultPath, path);
+    const title =
+      currentNote?.path === path ? currentNote.title : (path.split("/").pop() ?? path).replace(/\.md$/i, "");
+    await trashLib.moveToTrash(vaultPath, path, title);
     if (currentNote?.path === path) set({ currentNote: null });
     await get().refresh();
   },
@@ -238,6 +254,58 @@ export const useAppStore = create<AppState>((set, get) => ({
     const path = await vault.ensureTodayNote(vaultPath);
     await get().refresh();
     await get().openNote(path);
+  },
+
+  openTrash: async () => {
+    const { vaultPath } = get();
+    if (!vaultPath) return;
+    set({ currentNote: null, todosViewOpen: false, currentTodoId: null, trashViewOpen: true });
+    try {
+      const entries = await trashLib.listTrash(vaultPath);
+      set({ trashEntries: entries });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  closeTrash: () => set({ trashViewOpen: false }),
+
+  restoreTrashEntry: async (id: string) => {
+    const { vaultPath } = get();
+    if (!vaultPath) return;
+    await trashLib.restoreFromTrash(vaultPath, id);
+    await get().refresh();
+    await get().openTrash();
+  },
+
+  permanentlyDeleteTrashEntry: async (id: string) => {
+    const { vaultPath } = get();
+    if (!vaultPath) return;
+    await trashLib.permanentlyDelete(vaultPath, id);
+    await get().openTrash();
+  },
+
+  emptyTrash: async () => {
+    const { vaultPath } = get();
+    if (!vaultPath) return;
+    await trashLib.emptyTrash(vaultPath);
+    set({ trashEntries: [] });
+  },
+
+  // Restores the most recently deleted note. Used by the global Ctrl/Cmd+Z
+  // handler (only when focus isn't in an editable field, so it doesn't
+  // fight with the editor's own text-undo). Returns whether it restored
+  // anything, so the caller can decide whether to also navigate there.
+  undoLastDelete: async () => {
+    const { vaultPath } = get();
+    if (!vaultPath) return false;
+    const entries = await trashLib.listTrash(vaultPath);
+    const latest = entries[0];
+    if (!latest) return false;
+    const restoredPath = await trashLib.restoreFromTrash(vaultPath, latest.id);
+    await get().refresh();
+    await get().openNote(restoredPath);
+    return true;
   },
 
   setTagOnCurrentNote: async (tag: string, add: boolean) => {
@@ -267,7 +335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openTodos: async () => {
     const { vaultPath } = get();
     if (!vaultPath) return;
-    set({ currentNote: null, todosViewOpen: true, currentTodoId: null });
+    set({ currentNote: null, todosViewOpen: true, currentTodoId: null, trashViewOpen: false });
     try {
       const store = await todosLib.readTodoStore(vaultPath);
       set({ todos: store.items });

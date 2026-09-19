@@ -45,6 +45,18 @@ export function LayersIcon() {
   );
 }
 
+export function TrashIcon() {
+  return (
+    <svg {...common} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6h12" />
+      <path d="M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6" />
+      <path d="M5.5 6 6.2 16a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9L14.5 6" />
+      <path d="M8.3 9v5" />
+      <path d="M11.7 9v5" />
+    </svg>
+  );
+}
+
 export function PinIcon() {
   return (
     <svg {...common} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">

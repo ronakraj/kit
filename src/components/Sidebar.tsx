@@ -12,6 +12,8 @@ export function Sidebar() {
   const currentNote = useAppStore((s) => s.currentNote);
   const todosViewOpen = useAppStore((s) => s.todosViewOpen);
   const openTodos = useAppStore((s) => s.openTodos);
+  const trashViewOpen = useAppStore((s) => s.trashViewOpen);
+  const openTrash = useAppStore((s) => s.openTrash);
   const openToday = useAppStore((s) => s.openToday);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
@@ -85,6 +87,18 @@ export function Sidebar() {
         }}
       >
         ✓ Todos
+      </button>
+
+      <button
+        onClick={() => void openTrash()}
+        className="border-b px-3 py-2 text-left text-sm font-medium"
+        style={{
+          borderColor: "var(--border)",
+          background: trashViewOpen ? "var(--bg-hover)" : "transparent",
+          color: "var(--text)",
+        }}
+      >
+        🗑 Trash
       </button>
 
       <div className="flex-1 overflow-y-auto py-1">

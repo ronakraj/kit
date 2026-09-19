@@ -162,7 +162,7 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
 
 // ---- I/O: JSON sidecar per note under `_history/`, mirroring the vault's `_attachments/` pattern ----
 
-function historyRelPath(notePath: string): string {
+export function historyRelPath(notePath: string): string {
   return `${HISTORY_DIR}/${notePath}.json`;
 }
 

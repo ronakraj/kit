@@ -6,13 +6,13 @@ import {
   mkdir,
   exists,
   rename as renameFs,
-  remove as removeFs,
 } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import { load as loadStore, type Store } from "@tauri-apps/plugin-store";
 import { v4 as uuidv4 } from "uuid";
 import { parseNoteFile, serializeNoteFile, emptyMeta } from "./frontmatter";
 import { HISTORY_DIR } from "./blockHistory";
+import { TRASH_DIR } from "./trash";
 import type { NoteRecord, TreeEntry } from "./types";
 
 export const DAILY_DIR = "Daily";
@@ -93,9 +93,11 @@ export async function ensureVaultScaffold(vaultPath: string): Promise<void> {
   const dailyPath = await join(vaultPath, DAILY_DIR);
   const attachmentsPath = await join(vaultPath, ATTACHMENTS_DIR);
   const historyPath = await join(vaultPath, HISTORY_DIR);
+  const trashPath = await join(vaultPath, TRASH_DIR);
   if (!(await exists(dailyPath))) await mkdir(dailyPath, { recursive: true });
   if (!(await exists(attachmentsPath))) await mkdir(attachmentsPath, { recursive: true });
   if (!(await exists(historyPath))) await mkdir(historyPath, { recursive: true });
+  if (!(await exists(trashPath))) await mkdir(trashPath, { recursive: true });
 }
 
 export function joinRelative(...parts: string[]): string {
@@ -121,7 +123,7 @@ export async function buildTree(vaultPath: string, relativePath = ""): Promise<T
     const lowerName = entry.name.toLowerCase();
 
     if (entry.isDirectory) {
-      if (relativePath === "" && (entry.name === ATTACHMENTS_DIR || entry.name === HISTORY_DIR)) continue;
+      if (relativePath === "" && (entry.name === ATTACHMENTS_DIR || entry.name === HISTORY_DIR || entry.name === TRASH_DIR)) continue;
       const children = await buildTree(vaultPath, entryRelPath);
       result.push({ kind: "folder", name: entry.name, path: entryRelPath, children });
     } else if (entry.isFile && lowerName.endsWith(".md")) {
@@ -188,10 +190,6 @@ export async function renameNote(vaultPath: string, oldRelativePath: string, new
   if (newRelPath === oldRelativePath) return oldRelativePath;
   await renameFs(await join(vaultPath, oldRelativePath), await join(vaultPath, newRelPath));
   return newRelPath;
-}
-
-export async function deleteNote(vaultPath: string, relativePath: string): Promise<void> {
-  await removeFs(await join(vaultPath, relativePath));
 }
 
 /** Ensures today's daily note exists and returns its relative path. */

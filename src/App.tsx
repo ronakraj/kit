@@ -5,6 +5,8 @@ import { Sidebar } from "./components/Sidebar";
 import { Editor } from "./components/Editor";
 import { TodoListView } from "./components/TodoListView";
 import { TodoDetailView } from "./components/TodoDetailView";
+import { TrashView } from "./components/TrashView";
+import { GlobalUndo } from "./components/GlobalUndo";
 import { QuickSwitcher } from "./components/QuickSwitcher";
 import { PromptDialog } from "./components/PromptDialog";
 import { DeskBuddy } from "./components/DeskBuddy";
@@ -18,9 +20,13 @@ import { AlwaysOnTopToggle } from "./components/AlwaysOnTopToggle";
 
 function MainPane() {
   const todosViewOpen = useAppStore((s) => s.todosViewOpen);
+  const trashViewOpen = useAppStore((s) => s.trashViewOpen);
   const currentTodoId = useAppStore((s) => s.currentTodoId);
   if (todosViewOpen) {
     return currentTodoId ? <TodoDetailView /> : <TodoListView />;
+  }
+  if (trashViewOpen) {
+    return <TrashView />;
   }
   return <Editor />;
 }
@@ -57,6 +63,7 @@ function App() {
       <NoteHistoryToggle />
       <AlwaysOnTopToggle />
       <FocusToggle />
+      <GlobalUndo />
     </div>
   );
 }
