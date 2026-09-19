@@ -37,6 +37,7 @@ import { getAuthorId, createNote as createNoteFile, findNoteByTitle } from "../l
 import { extractPasteSourceUrl } from "../lib/pasteSource";
 import { TagChips } from "./TagChips";
 import { BacklinksPanel } from "./BacklinksPanel";
+import { WikiLinkPreview } from "./WikiLinkPreview";
 
 const SAVE_DEBOUNCE_MS = 600;
 const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
@@ -190,6 +191,8 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
   // normal editing painful.
   const [floatingModeActive, setFloatingModeActive] = useState(false);
   const [minContentHeight, setMinContentHeight] = useState(0);
+  const [hoverPreview, setHoverPreview] = useState<{ term: string; x: number; y: number } | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
   const gutterWrapRef = useRef<HTMLDivElement | null>(null);
   const initialBlocks = useMemo(() => parseMarkdownToBlocks(initialBody), [path]);
   const uploadFile = useMemo(() => createUploadFileHandler(vaultPath), [vaultPath]);
@@ -252,6 +255,15 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     );
     setMinContentHeight(maxBottom + 200);
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears a stale hover popover left over from the previous note when navigating.
+    setHoverPreview(null);
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, [path]);
 
   useEffect(() => {
     let cancelled = false;
@@ -461,6 +473,54 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
     }, 0);
   };
 
+  // Wiki-links render as plain `[[term]]` text (no dedicated DOM element),
+  // so both click-to-navigate and hover-to-preview locate one the same way:
+  // resolve the text node under the pointer and check if the offset falls
+  // inside a `[[...]]` match.
+  const findWikiLinkAtPoint = (clientX: number, clientY: number): string | null => {
+    const caretPos = (document as unknown as {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    }).caretRangeFromPoint?.(clientX, clientY);
+    if (!caretPos || caretPos.startContainer.nodeType !== Node.TEXT_NODE) return null;
+
+    const text = caretPos.startContainer.textContent ?? "";
+    const offset = caretPos.startOffset;
+    for (const match of text.matchAll(WIKI_LINK_RE)) {
+      const start = match.index ?? -1;
+      const end = start + match[0].length;
+      if (offset >= start && offset <= end) return match[1].trim();
+    }
+    return null;
+  };
+
+  const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (floatingModeActive) return;
+    const term = findWikiLinkAtPoint(e.clientX, e.clientY);
+    if (!term) {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+      setHoverPreview((prev) => (prev ? null : prev));
+      return;
+    }
+    if (hoverPreview?.term === term) return;
+    if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current);
+    const x = e.clientX;
+    const y = e.clientY;
+    hoverTimerRef.current = window.setTimeout(() => {
+      setHoverPreview({ term, x, y });
+    }, 350);
+  };
+
+  const handleContainerMouseLeave = () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoverPreview(null);
+  };
+
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (floatingModeActive) {
       const onExistingBlock = !!(e.target as HTMLElement).closest?.("[data-id]");
@@ -494,21 +554,11 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
       return;
     }
 
-    const caretPos = (document as unknown as {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    }).caretRangeFromPoint?.(e.clientX, e.clientY);
-    if (!caretPos || caretPos.startContainer.nodeType !== Node.TEXT_NODE) return;
-
-    const text = caretPos.startContainer.textContent ?? "";
-    const offset = caretPos.startOffset;
-    for (const match of text.matchAll(WIKI_LINK_RE)) {
-      const start = match.index ?? -1;
-      const end = start + match[0].length;
-      if (offset >= start && offset <= end) {
-        e.preventDefault();
-        void navigateToNoteTitle(match[1].trim());
-        return;
-      }
+    const term = findWikiLinkAtPoint(e.clientX, e.clientY);
+    if (term) {
+      e.preventDefault();
+      setHoverPreview(null);
+      void navigateToNoteTitle(term);
     }
   };
 
@@ -567,6 +617,8 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
           className="relative"
           style={{ minHeight: minContentHeight > 0 ? minContentHeight : "60vh", cursor: floatingModeActive ? "crosshair" : undefined }}
           onClick={handleContainerClick}
+          onMouseMove={handleContainerMouseMove}
+          onMouseLeave={handleContainerMouseLeave}
           onPaste={handlePaste}
         >
           {gutterEntries.map((g) => (
@@ -606,6 +658,9 @@ function BoundEditor({ path, vaultPath, initialBody }: { path: string; vaultPath
 
         <BacklinksPanel />
       </div>
+      {hoverPreview && (
+        <WikiLinkPreview key={hoverPreview.term} term={hoverPreview.term} x={hoverPreview.x} y={hoverPreview.y} />
+      )}
     </div>
   );
 }
