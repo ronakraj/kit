@@ -35,6 +35,7 @@ Other useful commands:
 npm run build        # type-check and build the frontend
 npm run test          # run the unit test suite
 npm run lint          # lint the frontend
+npm run check-docs    # verify docs' links/anchors/npm-script references are still valid
 npm run tauri build   # build a native installer
 ```
 

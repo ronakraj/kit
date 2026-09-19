@@ -62,9 +62,21 @@ jobs:
         working-directory: src-tauri
         run: cargo check
 
+  docs:
+    name: Docs (links, anchors, script references)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm run check-docs
+
   tauri-build:
     name: Tauri build (${{ matrix.os }})
-    needs: [frontend, rust]
+    needs: [frontend, rust, docs]
     strategy:
       fail-fast: false
       matrix:
